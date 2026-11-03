@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PopcornHub — Совместный просмотр контента</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍿</text></svg>">
+</head>
+<body>
+  <div id="app">
+    <!-- Navigation Header -->
+    <header class="app-header">
+      <div class="header-left">
+        <div class="logo">
+          <span class="logo-icon">🍿</span>
+          <span class="logo-text">Popcorn<strong>Hub</strong></span>
+        </div>
+        <div class="connection-status" id="connection-status">
+          <span class="dot"></span> <span class="status-text">Подключено</span>
+        </div>
+      </div>
+
+      <div class="header-right" id="user-header" style="display: none;">
+        <div class="user-profile">
+          <img id="header-avatar" class="avatar-small" src="" alt="Avatar">
+          <span id="header-username" class="username"></span>
+        </div>
+        <button id="logout-btn" class="btn btn-outline-sm">Выйти</button>
+      </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="main-content">
+      <!-- Auth Screen -->
+      <section id="auth-section" class="auth-section">
+        <div class="auth-card">
+          <div class="auth-tabs">
+            <button id="tab-login" class="auth-tab active">Вход</button>
+            <button id="tab-register" class="auth-tab">Регистрация</button>
+          </div>
+
+          <!-- Login Form -->
+          <form id="login-form" class="auth-form">
+            <h2>С возвращением в кинозал!</h2>
+            <p class="subtitle">Войдите, чтобы смотреть видео синхронно с близкими</p>
+
+            <div class="form-group">
+              <label>Email</label>
+              <input type="email" id="login-email" placeholder="ivan@example.com" required value="ivan@example.com">
+            </div>
+
+            <div class="form-group">
+              <label>Пароль</label>
+              <input type="password" id="login-password" placeholder="••••••••" required value="secret123">
+            </div>
+
+            <div id="login-error" class="alert-box error" style="display: none;"></div>
+
+            <button type="submit" class="btn btn-primary full-width">Войти в кинотеатр</button>
+          </form>
+
+          <!-- Register Form -->
+          <form id="register-form" class="auth-form" style="display: none;">
+            <h2>Создайте аккаунт</h2>
+            <p class="subtitle">Присоединяйтесь к совместным просмотрам</p>
+
+            <div class="form-group">
+              <label>Имя</label>
+              <input type="text" id="reg-name" placeholder="Иван" required>
+            </div>
+
+            <div class="form-group">
+              <label>Email</label>
+              <input type="email" id="reg-email" placeholder="ivan@example.com" required>
+            </div>
+
+            <div class="form-group">
+              <label>Пароль</label>
+              <input type="password" id="reg-password" placeholder="Минимум 4 символа" required>
+            </div>
+
+            <div id="reg-error" class="alert-box error" style="display: none;"></div>
+
+            <button type="submit" class="btn btn-primary full-width">Зарегистрироваться</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- Dashboard Screen (After Login) -->
+      <section id="dashboard-section" class="dashboard-section" style="display: none;">
+        <!-- Top Banner / Navigation -->
+        <div class="dashboard-nav">
+          <div class="nav-buttons">
+            <button id="nav-groups-btn" class="nav-btn active">👥 Мои группы</button>
+            <button id="nav-media-btn" class="nav-btn">🎬 Каталог видео</button>
+          </div>
+          <div class="action-buttons">
+            <button id="open-join-group-modal" class="btn btn-secondary">Ввести инвайт-код</button>
+            <button id="open-create-group-modal" class="btn btn-primary">+ Создать группу</button>
+          </div>
+        </div>
+
+        <!-- Groups View -->
+        <div id="groups-view" class="view-panel">
+          <div class="groups-layout">
+            <!-- Left Sidebar: Groups List -->
+            <div class="groups-sidebar">
+              <h3>Ваши группы</h3>
+              <div id="groups-list" class="groups-list">
+                <div class="empty-state">У вас пока нет групп. Создайте группу или присоединитесь по инвайт-коду!</div>
+              </div>
+            </div>
+
+            <!-- Right Panel: Group Details & Live Activity -->
+            <div class="group-detail-panel" id="group-detail-panel">
+              <div id="no-group-selected" class="empty-detail">
+                Выберите группу слева, чтобы увидеть участников и активные просмотры
+              </div>
+
+              <div id="group-selected-content" style="display: none;">
+                <div class="group-info-header">
+                  <div>
+                    <h2 id="current-group-name">Семья</h2>
+                    <div class="invite-code-chip">
+                      <span>Инвайт-код: <strong id="current-invite-code">FAM-9821</strong></span>
+                      <button id="copy-invite-code" class="btn-icon" title="Скопировать код">📋</button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- LIVE PRESENCE BANNER («Кто что смотрит») -->
+                <div class="presence-container">
+                  <div class="presence-header">
+                    <h4>📡 Прямо сейчас в группе</h4>
+                    <span class="live-badge">LIVE</span>
+                  </div>
+                  <div id="presence-cards" class="presence-cards">
+                    <div class="empty-presence">Сейчас никто ничего не смотрит. Выберите фильм ниже и начните совместный просмотр!</div>
+                  </div>
+                </div>
+
+                <!-- Group Members List -->
+                <div class="members-section">
+                  <h4>Участники группы (<span id="members-count">0</span>)</h4>
+                  <div id="group-members-list" class="members-grid"></div>
+                </div>
+
+                <!-- Quick Start Movie from Catalog for this Group -->
+                <div class="quick-media-section">
+                  <h4>Начать просмотр в этой группе</h4>
+                  <div id="group-media-list" class="media-grid-compact"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Media Catalog View -->
+        <div id="media-view" class="view-panel" style="display: none;">
+          <div class="catalog-header">
+            <h2>Каталог фильмов и сериалов</h2>
+            <p>Выберите фильм для совместного просмотра с вашей группой</p>
+          </div>
+          <div id="catalog-grid" class="catalog-grid"></div>
+        </div>
+      </section>
+
+      <!-- Synchronized Watch Room Screen -->
+      <section id="room-section" class="room-section" style="display: none;">
+        <div class="room-topbar">
+          <button id="leave-room-btn" class="btn btn-outline-sm">← Вернуться к группам</button>
+          <div class="room-title-area">
+            <h3 id="room-media-title">Интерстеллар</h3>
+            <span class="room-group-tag" id="room-group-tag">Группа: Семья</span>
+          </div>
+          <div class="sync-status-indicator" id="sync-status-indicator">
+            <span class="sync-dot"></span>
+            <span id="sync-status-text">Синхронизировано</span>
+          </div>
+        </div>
+
+        <div class="room-stage">
+          <!-- Video Player Column -->
+          <div class="player-column">
+            <div class="video-wrapper" id="video-wrapper">
+              <video id="shared-video" preload="auto" playsinline>
+                Ваш браузер не поддерживает встроенное видео.
+              </video>
+
+              <!-- Floating Reactions Layer -->
+              <div id="reactions-container" class="reactions-layer"></div>
+
+              <!-- Toast notification inside player -->
+              <div id="player-notification" class="player-toast" style="display: none;"></div>
+
+              <!-- Custom Sync Controls Overlay Bar -->
+              <div class="custom-player-controls">
+                <button id="ctrl-play-pause" class="ctrl-btn">▶️</button>
+                <button id="ctrl-rewind" class="ctrl-btn" title="Назад 10 сек">⏪ 10с</button>
+                <button id="ctrl-forward" class="ctrl-btn" title="Вперед 10 сек">⏩ 10с</button>
+                <div class="time-display">
+                  <span id="current-time-text">00:00</span> / <span id="duration-time-text">00:00</span>
+                </div>
+                <input type="range" id="seek-slider" min="0" max="100" value="0" step="0.5" class="slider-timeline">
+                <button id="ctrl-sync-force" class="ctrl-btn-sm" title="Принудительная сверка с сервером">🔄 Синхр.</button>
+              </div>
+            </div>
+
+            <!-- Reaction Buttons Bar -->
+            <div class="reactions-bar">
+              <span class="reactions-title">Быстрые эмодзи:</span>
+              <button class="reaction-btn" data-emoji="🍿">🍿</button>
+              <button class="reaction-btn" data-emoji="❤️">❤️</button>
+              <button class="reaction-btn" data-emoji="🔥">🔥</button>
+              <button class="reaction-btn" data-emoji="😂">😂</button>
+              <button class="reaction-btn" data-emoji="👏">👏</button>
+              <button class="reaction-btn" data-emoji="😮">😮</button>
+              <button class="reaction-btn" data-emoji="😱">😱</button>
+            </div>
+          </div>
+
+          <!-- Room Sidebar: Participants and Chat -->
+          <div class="room-sidebar">
+            <!-- Active Viewers -->
+            <div class="active-viewers-box">
+              <h4>В комнате (<span id="active-users-count">0</span>):</h4>
+              <div id="active-viewers-list" class="viewers-row"></div>
+            </div>
+
+            <!-- In-room Chat -->
+            <div class="room-chat">
+              <div class="chat-header">
+                <h4>Чат комнаты</h4>
+              </div>
+              <div id="chat-messages" class="chat-messages">
+                <div class="chat-system-msg">Добро пожаловать в комнату! Управление воспроизведением открыто для всех участников.</div>
+              </div>
+              <form id="chat-form" class="chat-input-form">
+                <input type="text" id="chat-input" placeholder="Написать в чат..." autocomplete="off">
+                <button type="submit" class="btn btn-primary-sm">Отправить</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Modal: Create Group -->
+    <div id="modal-create-group" class="modal" style="display: none;">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <h3>Создать новую группу</h3>
+          <button class="modal-close" data-close="modal-create-group">&times;</button>
+        </div>
+        <form id="create-group-form">
+          <div class="form-group">
+            <label>Название группы</label>
+            <input type="text" id="create-group-name" placeholder="Например: Семья, Друзья, Киноклуб" required>
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" data-close="modal-create-group">Отмена</button>
+            <button type="submit" class="btn btn-primary">Создать</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal: Join Group -->
+    <div id="modal-join-group" class="modal" style="display: none;">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <h3>Вступить в группу</h3>
+          <button class="modal-close" data-close="modal-join-group">&times;</button>
+        </div>
+        <form id="join-group-form">
+          <div class="form-group">
+            <label>Инвайт-код</label>
+            <input type="text" id="join-invite-code" placeholder="Например: FAM-9821" style="text-transform: uppercase;" required>
+          </div>
+          <div id="join-error" class="alert-box error" style="display: none;"></div>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" data-close="modal-join-group">Отмена</button>
+            <button type="submit" class="btn btn-primary">Вступить</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Rate Limit Toast Notification -->
+    <div id="toast-notification" class="toast" style="display: none;"></div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,156 @@
+package middleware
+
+import (
+	"bufio"
+	"context"
+	"errors"
+	"log/slog"
+	"net"
+	"net/http"
+	"strings"
+	"time"
+
+	"popcornhub/internal/auth"
+	"popcornhub/internal/metrics"
+)
+
+type contextKey string
+
+const (
+	UserIDKey    contextKey = "user_id"
+	UserEmailKey contextKey = "user_email"
+	UserNameKey  contextKey = "user_name"
+)
+
+type statusResponseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (rw *statusResponseWriter) WriteHeader(code int) {
+	rw.statusCode = code
+	rw.ResponseWriter.WriteHeader(code)
+}
+
+func (rw *statusResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if hj, ok := rw.ResponseWriter.(http.Hijacker); ok {
+		return hj.Hijack()
+	}
+	return nil, nil, errors.New("underlying ResponseWriter does not implement http.Hijacker")
+}
+
+func (rw *statusResponseWriter) Flush() {
+	if fl, ok := rw.ResponseWriter.(http.Flusher); ok {
+		fl.Flush()
+	}
+}
+
+// LoggerAndMetrics logs each HTTP request and records Prometheus metrics.
+func LoggerAndMetrics(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		wrapped := &statusResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+
+		next.ServeHTTP(wrapped, r)
+
+		duration := time.Since(start)
+		pattern := r.Pattern
+		if pattern == "" {
+			pattern = r.URL.Path
+		}
+
+		slog.Info("HTTP request",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"status", wrapped.statusCode,
+			"duration_ms", duration.Milliseconds(),
+			"remote", r.RemoteAddr,
+		)
+
+		statusStr := http.StatusText(wrapped.statusCode)
+		metrics.HTTPRequestsTotal.WithLabelValues(r.Method, pattern, statusStr).Inc()
+		metrics.HTTPRequestDuration.WithLabelValues(r.Method, pattern).Observe(duration.Seconds())
+	})
+}
+
+// CORS handles Cross-Origin Resource Sharing.
+func CORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
+
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+// Recover recovers from panics gracefully and returns 500.
+func Recover(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if rec := recover(); rec != nil {
+				slog.Error("Panic recovered in HTTP handler", "panic", rec, "path", r.URL.Path)
+				http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
+			}
+		}()
+		next.ServeHTTP(w, r)
+	})
+}
+
+// Auth verifies the JWT Access Token from the Authorization header.
+func Auth(secret string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			authHeader := r.Header.Get("Authorization")
+			if authHeader == "" {
+				http.Error(w, `{"error":"missing authorization header"}`, http.StatusUnauthorized)
+				return
+			}
+
+			parts := strings.Split(authHeader, " ")
+			if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+				http.Error(w, `{"error":"invalid authorization format, expected Bearer <token>"}`, http.StatusUnauthorized)
+				return
+			}
+
+			claims, err := auth.ValidateAccessToken(secret, parts[1])
+			if err != nil {
+				http.Error(w, `{"error":"invalid or expired token"}`, http.StatusUnauthorized)
+				return
+			}
+
+			ctx := context.WithValue(r.Context(), UserIDKey, claims.UserID)
+			ctx = context.WithValue(ctx, UserEmailKey, claims.Email)
+			ctx = context.WithValue(ctx, UserNameKey, claims.Name)
+
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+// Helper context getters
+func GetUserID(ctx context.Context) string {
+	if val, ok := ctx.Value(UserIDKey).(string); ok {
+		return val
+	}
+	return ""
+}
+
+func GetUserName(ctx context.Context) string {
+	if val, ok := ctx.Value(UserNameKey).(string); ok {
+		return val
+	}
+	return ""
+}
+
+func GetUserEmail(ctx context.Context) string {
+	if val, ok := ctx.Value(UserEmailKey).(string); ok {
+		return val
+	}
+	return ""
+}

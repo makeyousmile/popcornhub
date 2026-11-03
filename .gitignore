@@ -1,0 +1,28 @@
+# Binaries
+/server
+/popcornhub-bin
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test and coverage artifacts
+*.test
+*.out
+*.log
+
+# Sensitive environment files
+.env
+.env.local
+
+# OS and Editor artifacts
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*~
+
+# Temporary scratch directories
+scratch/

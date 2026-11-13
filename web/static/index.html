@@ -81,6 +81,10 @@
               </div>
             </div>
 
+            <div class="auth-helper-links">
+              <button type="button" id="btn-forgot-password" class="link-btn">Забыли пароль?</button>
+            </div>
+
             <div id="login-error" class="alert-box error" style="display: none;"></div>
 
             <button type="submit" class="btn btn-primary full-width">Войти в кинотеатр</button>
@@ -352,6 +356,99 @@
           <div class="modal-actions">
             <button type="button" class="btn btn-secondary" data-close="modal-join-group">Отмена</button>
             <button type="submit" class="btn btn-primary">Вступить</button>
+          </div>
+        </form>
+      </div>
+    </dialog>
+
+    <!-- Modal: Forgot Password (Native Dialog) -->
+    <dialog id="modal-forgot-password" class="modal-dialog-modern" closedby="any" aria-labelledby="modal-forgot-title">
+      <div class="modal-body-container">
+        <div class="modal-header">
+          <h3 id="modal-forgot-title">Восстановление пароля</h3>
+          <button type="button" class="modal-close" data-close="modal-forgot-password" aria-label="Закрыть">&times;</button>
+        </div>
+        <form id="forgot-password-form" novalidate>
+          <p class="subtitle">Укажите email, привязанный к аккаунту, и мы пришлём ссылку для сброса пароля.</p>
+          <div class="form-group field">
+            <label for="forgot-email">Email</label>
+            <span id="forgot-email-hint" class="hint">Укажите адрес электронной почты</span>
+            <input
+              type="email"
+              id="forgot-email"
+              name="email"
+              autocomplete="username"
+              spellcheck="false"
+              placeholder="ivan@example.com"
+              required
+              aria-describedby="forgot-email-hint"
+              data-error="forgot-email-error"
+            >
+            <div id="forgot-email-error" class="error-msg">
+              <span role="img" aria-label="Ошибка">❌</span> Введите корректный адрес электронной почты.
+            </div>
+          </div>
+          <div id="forgot-alert" class="alert-box" style="display: none;"></div>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" data-close="modal-forgot-password">Отмена</button>
+            <button type="submit" id="btn-forgot-submit" class="btn btn-primary">Отправить ссылку</button>
+          </div>
+        </form>
+      </div>
+    </dialog>
+
+    <!-- Modal: Reset Password (Native Dialog) -->
+    <dialog id="modal-reset-password" class="modal-dialog-modern" closedby="any" aria-labelledby="modal-reset-title">
+      <div class="modal-body-container">
+        <div class="modal-header">
+          <h3 id="modal-reset-title">Новый пароль</h3>
+          <button type="button" class="modal-close" data-close="modal-reset-password" aria-label="Закрыть">&times;</button>
+        </div>
+        <form id="reset-password-form" novalidate>
+          <p class="subtitle">Придумайте новый надёжный пароль для вашей учётной записи.</p>
+          <input type="hidden" id="reset-token-input" name="token">
+          
+          <div class="form-group field">
+            <label for="reset-password">Новый пароль</label>
+            <span id="reset-password-hint" class="hint">Минимум 6 символов</span>
+            <input
+              type="password"
+              id="reset-password"
+              name="password"
+              autocomplete="new-password"
+              placeholder="••••••••"
+              minlength="6"
+              required
+              aria-describedby="reset-password-hint"
+              data-error="reset-password-error"
+            >
+            <div id="reset-password-error" class="error-msg">
+              <span role="img" aria-label="Ошибка">❌</span> Пароль должен содержать не менее 6 символов.
+            </div>
+          </div>
+
+          <div class="form-group field">
+            <label for="reset-confirm-password">Повторите пароль</label>
+            <input
+              type="password"
+              id="reset-confirm-password"
+              name="confirm_password"
+              autocomplete="new-password"
+              placeholder="••••••••"
+              minlength="6"
+              required
+              data-error="reset-confirm-error"
+            >
+            <div id="reset-confirm-error" class="error-msg">
+              <span role="img" aria-label="Ошибка">❌</span> Пароли не совпадают.
+            </div>
+          </div>
+
+          <div id="reset-alert" class="alert-box" style="display: none;"></div>
+
+          <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" data-close="modal-reset-password">Отмена</button>
+            <button type="submit" id="btn-reset-submit" class="btn btn-primary">Сменить пароль</button>
           </div>
         </form>
       </div>

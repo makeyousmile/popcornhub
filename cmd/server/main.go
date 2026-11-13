@@ -78,9 +78,11 @@ func main() {
 	groupRepo := repository.NewGroupRepo(mongoDB.Database)
 	mediaRepo := repository.NewMediaRepo(mongoDB.Database)
 	roomRepo := repository.NewRoomRepo(mongoDB.Database)
+	passwordResetRepo := repository.NewPasswordResetRepo(mongoDB.Database)
 
 	// Initialize services
-	authService := service.NewAuthService(userRepo, cfg)
+	emailService := service.NewEmailService(cfg)
+	authService := service.NewAuthService(userRepo, passwordResetRepo, emailService, cfg)
 	groupService := service.NewGroupService(groupRepo, userRepo)
 	mediaService := service.NewMediaService(mediaRepo)
 	roomService := service.NewRoomService(roomRepo, groupRepo, mediaRepo)

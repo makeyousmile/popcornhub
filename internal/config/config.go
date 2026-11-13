@@ -18,6 +18,12 @@ type Config struct {
 	RateLimitIntervalMs int
 	LogLevel            string
 	MetricsToken        string
+	SMTPHost            string
+	SMTPPort            string
+	SMTPUser            string
+	SMTPPassword        string
+	SMTPFrom            string
+	AppBaseURL          string
 }
 
 func Load() *Config {
@@ -30,6 +36,12 @@ func Load() *Config {
 	rateLimitMs := getEnvInt("RATE_LIMIT_INTERVAL_MS", 1500)
 	logLevel := getEnv("LOG_LEVEL", "info")
 	metricsToken := getEnv("METRICS_TOKEN", "")
+	smtpHost := getEnv("SMTP_HOST", "")
+	smtpPort := getEnv("SMTP_PORT", "587")
+	smtpUser := getEnv("SMTP_USER", "")
+	smtpPassword := getEnv("SMTP_PASSWORD", "")
+	smtpFrom := getEnv("SMTP_FROM", "no-reply@popcornhub.local")
+	appBaseURL := getEnv("APP_BASE_URL", "http://localhost:8085")
 
 	return &Config{
 		Port:                port,
@@ -43,6 +55,12 @@ func Load() *Config {
 		RateLimitIntervalMs: rateLimitMs,
 		LogLevel:            logLevel,
 		MetricsToken:        metricsToken,
+		SMTPHost:            smtpHost,
+		SMTPPort:            smtpPort,
+		SMTPUser:            smtpUser,
+		SMTPPassword:        smtpPassword,
+		SMTPFrom:            smtpFrom,
+		AppBaseURL:          appBaseURL,
 	}
 }
 

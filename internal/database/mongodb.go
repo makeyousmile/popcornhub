@@ -94,6 +94,24 @@ func (m *MongoDB) ensureIndexes(ctx context.Context) error {
 		return fmt.Errorf("create watch_rooms.group_id index: %w", err)
 	}
 
+	// 5. Indexes for password_resets
+	resetsCol := m.Database.Collection("password_resets")
+	_, err = resetsCol.Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys:    bson.D{{Key: "token_hash", Value: 1}},
+		Options: options.Index().SetUnique(true),
+	})
+	if err != nil {
+		return fmt.Errorf("create password_resets.token_hash index: %w", err)
+	}
+
+	_, err = resetsCol.Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys:    bson.D{{Key: "expires_at", Value: 1}},
+		Options: options.Index().SetExpireAfterSeconds(0),
+	})
+	if err != nil {
+		return fmt.Errorf("create password_resets.expires_at TTL index: %w", err)
+	}
+
 	slog.Info("MongoDB indexes verified and created")
 	return nil
 }

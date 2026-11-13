@@ -77,3 +77,17 @@ func (r *UserRepo) FindByIDs(ctx context.Context, ids []bson.ObjectID) ([]models
 	}
 	return users, nil
 }
+
+func (r *UserRepo) UpdatePassword(ctx context.Context, userID bson.ObjectID, newPasswordHash string) error {
+	res, err := r.collection.UpdateOne(ctx,
+		bson.M{"_id": userID},
+		bson.M{"$set": bson.M{"password_hash": newPasswordHash}},
+	)
+	if err != nil {
+		return err
+	}
+	if res.MatchedCount == 0 {
+		return ErrUserNotFound
+	}
+	return nil
+}

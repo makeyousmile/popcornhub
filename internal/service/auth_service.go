@@ -2,7 +2,12 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -34,14 +39,23 @@ func isValidEmail(email string) bool {
 }
 
 type AuthService struct {
-	userRepo *repository.UserRepo
-	cfg      *config.Config
+	userRepo     *repository.UserRepo
+	resetRepo    *repository.PasswordResetRepo
+	emailService *EmailService
+	cfg          *config.Config
 }
 
-func NewAuthService(userRepo *repository.UserRepo, cfg *config.Config) *AuthService {
+func NewAuthService(
+	userRepo *repository.UserRepo,
+	resetRepo *repository.PasswordResetRepo,
+	emailService *EmailService,
+	cfg *config.Config,
+) *AuthService {
 	return &AuthService{
-		userRepo: userRepo,
-		cfg:      cfg,
+		userRepo:     userRepo,
+		resetRepo:    resetRepo,
+		emailService: emailService,
+		cfg:          cfg,
 	}
 }
 
@@ -174,4 +188,92 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (*auth.T
 
 func (s *AuthService) GetUser(ctx context.Context, userID bson.ObjectID) (*models.User, error) {
 	return s.userRepo.FindByID(ctx, userID)
+}
+
+func (s *AuthService) RequestPasswordReset(ctx context.Context, email string) error {
+	email = strings.TrimSpace(strings.ToLower(email))
+	if !isValidEmail(email) {
+		return ErrInvalidEmail
+	}
+
+	user, err := s.userRepo.FindByEmail(ctx, email)
+	if err != nil {
+		if errors.Is(err, repository.ErrUserNotFound) {
+			// Avoid user enumeration
+			slog.Info("Password reset requested for non-existent email", "email", email)
+			return nil
+		}
+		return err
+	}
+
+	// Invalidate previous tokens
+	if err := s.resetRepo.InvalidateExistingForUser(ctx, user.ID); err != nil {
+		slog.Warn("Failed to invalidate old reset tokens", "error", err)
+	}
+
+	tokenBytes := make([]byte, 32)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		return fmt.Errorf("failed to generate secure token: %w", err)
+	}
+	rawToken := hex.EncodeToString(tokenBytes)
+
+	tokenHashBytes := sha256.Sum256([]byte(rawToken))
+	tokenHash := hex.EncodeToString(tokenHashBytes[:])
+
+	reset := &models.PasswordReset{
+		UserID:    user.ID,
+		Email:     user.Email,
+		TokenHash: tokenHash,
+		ExpiresAt: time.Now().UTC().Add(15 * time.Minute),
+		CreatedAt: time.Now().UTC(),
+		Used:      false,
+	}
+
+	if err := s.resetRepo.Create(ctx, reset); err != nil {
+		return fmt.Errorf("failed to save password reset record: %w", err)
+	}
+
+	baseURL := strings.TrimRight(s.cfg.AppBaseURL, "/")
+	resetURL := fmt.Sprintf("%s/?reset_token=%s", baseURL, rawToken)
+
+	if err := s.emailService.SendPasswordReset(user.Email, user.Name, resetURL); err != nil {
+		slog.Error("Failed to send password reset email", "error", err)
+	}
+
+	return nil
+}
+
+func (s *AuthService) ResetPassword(ctx context.Context, rawToken, newPassword string) error {
+	rawToken = strings.TrimSpace(rawToken)
+	if rawToken == "" {
+		return errors.New("reset token is required")
+	}
+
+	if len(newPassword) < 6 {
+		return ErrPasswordTooShort
+	}
+
+	tokenHashBytes := sha256.Sum256([]byte(rawToken))
+	tokenHash := hex.EncodeToString(tokenHashBytes[:])
+
+	reset, err := s.resetRepo.FindActiveByTokenHash(ctx, tokenHash)
+	if err != nil {
+		return err
+	}
+
+	newHash, err := auth.HashPassword(newPassword)
+	if err != nil {
+		return fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	if err := s.userRepo.UpdatePassword(ctx, reset.UserID, newHash); err != nil {
+		return fmt.Errorf("failed to update user password: %w", err)
+	}
+
+	if err := s.resetRepo.MarkUsed(ctx, reset.ID); err != nil {
+		slog.Warn("Failed to mark reset token as used", "error", err)
+	}
+
+	slog.Info("Password successfully reset", "user_id", reset.UserID.Hex())
+	return nil
 }

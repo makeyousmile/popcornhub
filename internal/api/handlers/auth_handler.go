@@ -108,3 +108,60 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 
 	respondJSON(w, http.StatusOK, user)
 }
+
+type ForgotPasswordInput struct {
+	Email string `json:"email"`
+}
+
+func (h *AuthHandler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1024*64)
+	var input ForgotPasswordInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if err := h.authService.RequestPasswordReset(r.Context(), input.Email); err != nil {
+		if errors.Is(err, service.ErrInvalidEmail) {
+			respondError(w, http.StatusBadRequest, "invalid email format")
+			return
+		}
+		respondError(w, http.StatusInternalServerError, "failed to process request")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{
+		"message": "Если данный адрес зарегистрирован, ссылка для восстановления пароля отправлена на почту.",
+	})
+}
+
+type ResetPasswordInput struct {
+	Token    string `json:"token"`
+	Password string `json:"password"`
+}
+
+func (h *AuthHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1024*64)
+	var input ResetPasswordInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if err := h.authService.ResetPassword(r.Context(), input.Token, input.Password); err != nil {
+		if errors.Is(err, service.ErrPasswordTooShort) {
+			respondError(w, http.StatusBadRequest, "password must be at least 6 characters")
+			return
+		}
+		if errors.Is(err, repository.ErrResetTokenNotFound) || errors.Is(err, repository.ErrResetTokenExpired) {
+			respondError(w, http.StatusBadRequest, "ссылка для сброса пароля недействительна или устарела")
+			return
+		}
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{
+		"message": "Пароль успешно обновлён. Теперь вы можете войти в систему с новым паролем.",
+	})
+}

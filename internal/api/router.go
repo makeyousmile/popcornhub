@@ -89,6 +89,8 @@ func NewRouter(deps RouterDependencies) http.Handler {
 	mux.HandleFunc("POST /api/v1/auth/register", deps.AuthHandler.Register)
 	mux.HandleFunc("POST /api/v1/auth/login", deps.AuthHandler.Login)
 	mux.HandleFunc("POST /api/v1/auth/refresh", deps.AuthHandler.Refresh)
+	mux.HandleFunc("POST /api/v1/auth/forgot-password", deps.AuthHandler.ForgotPassword)
+	mux.HandleFunc("POST /api/v1/auth/reset-password", deps.AuthHandler.ResetPassword)
 
 	// Protected Auth endpoints
 	mux.Handle("GET /api/v1/auth/me", authMW(http.HandlerFunc(deps.AuthHandler.Me)))

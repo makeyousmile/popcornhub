@@ -16,6 +16,17 @@ type User struct {
 	CreatedAt    time.Time     `bson:"created_at" json:"created_at"`
 }
 
+// PasswordReset represents a password recovery token in the "password_resets" collection.
+type PasswordReset struct {
+	ID        bson.ObjectID `bson:"_id,omitempty" json:"id"`
+	UserID    bson.ObjectID `bson:"user_id" json:"user_id"`
+	Email     string        `bson:"email" json:"email"`
+	TokenHash string        `bson:"token_hash" json:"token_hash"`
+	ExpiresAt time.Time     `bson:"expires_at" json:"expires_at"`
+	CreatedAt time.Time     `bson:"created_at" json:"created_at"`
+	Used      bool          `bson:"used" json:"used"`
+}
+
 // GroupRole represents a member's role in a group.
 type GroupRole string
 

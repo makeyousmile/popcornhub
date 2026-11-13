@@ -67,6 +67,21 @@
     joinInviteCode: document.getElementById('join-invite-code'),
     joinError: document.getElementById('join-error'),
 
+    // Password Recovery Modals
+    btnForgotPassword: document.getElementById('btn-forgot-password'),
+    modalForgotPassword: document.getElementById('modal-forgot-password'),
+    forgotPasswordForm: document.getElementById('forgot-password-form'),
+    forgotEmail: document.getElementById('forgot-email'),
+    forgotAlert: document.getElementById('forgot-alert'),
+    btnForgotSubmit: document.getElementById('btn-forgot-submit'),
+    modalResetPassword: document.getElementById('modal-reset-password'),
+    resetPasswordForm: document.getElementById('reset-password-form'),
+    resetTokenInput: document.getElementById('reset-token-input'),
+    resetPassword: document.getElementById('reset-password'),
+    resetConfirmPassword: document.getElementById('reset-confirm-password'),
+    resetAlert: document.getElementById('reset-alert'),
+    btnResetSubmit: document.getElementById('btn-reset-submit'),
+
     // Group Details
     noGroupSelected: document.getElementById('no-group-selected'),
     groupSelectedContent: document.getElementById('group-selected-content'),
@@ -594,6 +609,144 @@
       el.joinError.style.display = 'block';
     }
   });
+
+  // ==========================================
+  // Password Recovery Modals & Flows
+  // ==========================================
+  if (el.btnForgotPassword) {
+    el.btnForgotPassword.addEventListener('click', () => {
+      if (el.forgotAlert) el.forgotAlert.style.display = 'none';
+      if (el.forgotPasswordForm) el.forgotPasswordForm.reset();
+      // If user already typed their email in login form, prefill it
+      if (el.loginEmail && el.loginEmail.value.trim() && el.forgotEmail) {
+        el.forgotEmail.value = el.loginEmail.value.trim();
+      }
+      openModal(el.modalForgotPassword);
+      if (el.forgotEmail) el.forgotEmail.focus();
+    });
+  }
+
+  if (el.forgotPasswordForm) {
+    el.forgotPasswordForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!el.forgotPasswordForm.checkValidity()) {
+        el.forgotPasswordForm.reportValidity();
+        return;
+      }
+
+      if (el.forgotAlert) el.forgotAlert.style.display = 'none';
+      const origText = el.btnForgotSubmit ? el.btnForgotSubmit.textContent : '';
+      if (el.btnForgotSubmit) {
+        el.btnForgotSubmit.disabled = true;
+        el.btnForgotSubmit.textContent = 'Отправка...';
+      }
+
+      try {
+        const res = await apiRequest('/api/v1/auth/forgot-password', {
+          method: 'POST',
+          body: JSON.stringify({ email: el.forgotEmail.value }),
+        });
+        if (el.forgotAlert) {
+          el.forgotAlert.className = 'alert-box success';
+          el.forgotAlert.textContent = res.message || 'Если данный адрес зарегистрирован, ссылка для восстановления пароля отправлена на почту.';
+          el.forgotAlert.style.display = 'block';
+        }
+        showToast('Ссылка для восстановления отправлена на почту.');
+      } catch (err) {
+        if (el.forgotAlert) {
+          el.forgotAlert.className = 'alert-box error';
+          el.forgotAlert.textContent = err.message;
+          el.forgotAlert.style.display = 'block';
+        }
+      } finally {
+        if (el.btnForgotSubmit) {
+          el.btnForgotSubmit.disabled = false;
+          el.btnForgotSubmit.textContent = origText;
+        }
+      }
+    });
+  }
+
+  if (el.resetPasswordForm) {
+    el.resetPasswordForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (el.resetAlert) el.resetAlert.style.display = 'none';
+
+      if (!el.resetPasswordForm.checkValidity()) {
+        el.resetPasswordForm.reportValidity();
+        return;
+      }
+
+      const pass = el.resetPassword.value;
+      const confirm = el.resetConfirmPassword.value;
+
+      if (pass !== confirm) {
+        if (el.resetAlert) {
+          el.resetAlert.className = 'alert-box error';
+          el.resetAlert.textContent = 'Пароли не совпадают.';
+          el.resetAlert.style.display = 'block';
+        }
+        el.resetConfirmPassword.focus();
+        return;
+      }
+
+      const origText = el.btnResetSubmit ? el.btnResetSubmit.textContent : '';
+      if (el.btnResetSubmit) {
+        el.btnResetSubmit.disabled = true;
+        el.btnResetSubmit.textContent = 'Сохранение...';
+      }
+
+      try {
+        const res = await apiRequest('/api/v1/auth/reset-password', {
+          method: 'POST',
+          body: JSON.stringify({
+            token: el.resetTokenInput.value,
+            password: pass,
+          }),
+        });
+        if (el.resetAlert) {
+          el.resetAlert.className = 'alert-box success';
+          el.resetAlert.textContent = res.message || 'Пароль успешно обновлен!';
+          el.resetAlert.style.display = 'block';
+        }
+        showToast('Пароль успешно обновлен. Войдите с новым паролем.');
+
+        setTimeout(() => {
+          closeModal(el.modalResetPassword);
+          el.resetPasswordForm.reset();
+          if (el.tabLogin) el.tabLogin.click();
+          if (el.loginPassword) el.loginPassword.focus();
+        }, 1500);
+      } catch (err) {
+        if (el.resetAlert) {
+          el.resetAlert.className = 'alert-box error';
+          el.resetAlert.textContent = err.message;
+          el.resetAlert.style.display = 'block';
+        }
+      } finally {
+        if (el.btnResetSubmit) {
+          el.btnResetSubmit.disabled = false;
+          el.btnResetSubmit.textContent = origText;
+        }
+      }
+    });
+  }
+
+  function checkUrlPasswordResetToken() {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get('reset_token') || params.get('token');
+      if (token && el.modalResetPassword && el.resetTokenInput) {
+        el.resetTokenInput.value = token;
+        if (el.resetAlert) el.resetAlert.style.display = 'none';
+        openModal(el.modalResetPassword);
+        const cleanUrl = window.location.pathname + window.location.hash;
+        window.history.replaceState({}, document.title, cleanUrl);
+      }
+    } catch (e) {
+      console.warn('Failed to parse URL reset token', e);
+    }
+  }
 
   // ==========================================
   // Accessible Copy Button (copy-button guide)
@@ -1299,4 +1452,5 @@
   // Start initialization
   UserInvalidHandler.init();
   checkAuth();
+  checkUrlPasswordResetToken();
 })();

@@ -39,6 +39,7 @@ func (h *RoomHandler) CreateOrGetRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, 1024*64)
 	var input StartRoomInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		respondError(w, http.StatusBadRequest, "invalid request body")
@@ -54,14 +55,14 @@ func (h *RoomHandler) CreateOrGetRoom(w http.ResponseWriter, r *http.Request) {
 	room, err := h.roomService.GetOrCreateRoom(r.Context(), userID, groupID, mediaID)
 	if err != nil {
 		if errors.Is(err, service.ErrNotGroupMember) {
-			respondError(w, http.StatusForbidden, err.Error())
+			respondError(w, http.StatusForbidden, "not a member of this group")
 			return
 		}
 		if errors.Is(err, repository.ErrMediaNotFound) {
-			respondError(w, http.StatusNotFound, err.Error())
+			respondError(w, http.StatusNotFound, "media not found")
 			return
 		}
-		respondError(w, http.StatusInternalServerError, err.Error())
+		respondError(w, http.StatusInternalServerError, "failed to get or create room")
 		return
 	}
 

@@ -144,13 +144,13 @@ func (m *MongoDB) seedInitialMedia(ctx context.Context) error {
 		},
 		models.MediaItem{
 			ID:          bson.NewObjectID(),
-			Title:       "Интерстеллар (Демо трейлер)",
+			Title:       "Elephants Dream (Мечта Слонов)",
 			StreamURL:   "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
 			DurationSec: 653,
 			PosterURL:   "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ee/Elephants_Dream_poster.jpg/640px-Elephants_Dream_poster.jpg",
 			Metadata: models.MediaMetadata{
-				Genre: []string{"Sci-Fi", "Драма"},
-				Year:  2014,
+				Genre: []string{"Sci-Fi", "Анимация"},
+				Year:  2006,
 			},
 		},
 	}

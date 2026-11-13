@@ -16,7 +16,7 @@ func TestGenerateInviteCode(t *testing.T) {
 		t.Fatalf("expected format PREFIX-NUMBER, got %s", code)
 	}
 
-	if len(parts[1]) != 4 {
-		t.Fatalf("expected 4 digit number, got %s", parts[1])
+	if len(parts[1]) != 6 {
+		t.Fatalf("expected 6 digit number, got %s", parts[1])
 	}
 }

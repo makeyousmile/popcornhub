@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -52,6 +53,8 @@ func (s *RoomService) GetOrCreateRoom(ctx context.Context, userID, groupID, medi
 		if existing.MediaID == mediaID {
 			return existing, nil
 		}
+	} else if err != nil && !errors.Is(err, repository.ErrRoomNotFound) {
+		return nil, err
 	}
 
 	// Create new room

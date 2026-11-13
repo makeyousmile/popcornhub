@@ -59,4 +59,10 @@ func TestGenerateTokenPair_And_Validation(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected validation with wrong secret to fail")
 	}
+
+	// Refresh token must NOT be accepted as access token
+	_, err = ValidateAccessToken(secret, tokens.RefreshToken)
+	if err == nil {
+		t.Fatalf("expected ValidateAccessToken to reject refresh token")
+	}
 }

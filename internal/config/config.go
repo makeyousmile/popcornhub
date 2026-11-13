@@ -17,6 +17,7 @@ type Config struct {
 	JWTRefreshExpiry    time.Duration
 	RateLimitIntervalMs int
 	LogLevel            string
+	MetricsToken        string
 }
 
 func Load() *Config {
@@ -28,6 +29,7 @@ func Load() *Config {
 	jwtSecret := getEnv("JWT_SECRET", "super-secret-popcorn-key-change-in-prod-2026")
 	rateLimitMs := getEnvInt("RATE_LIMIT_INTERVAL_MS", 1500)
 	logLevel := getEnv("LOG_LEVEL", "info")
+	metricsToken := getEnv("METRICS_TOKEN", "")
 
 	return &Config{
 		Port:                port,
@@ -40,6 +42,7 @@ func Load() *Config {
 		JWTRefreshExpiry:    7 * 24 * time.Hour,
 		RateLimitIntervalMs: rateLimitMs,
 		LogLevel:            logLevel,
+		MetricsToken:        metricsToken,
 	}
 }
 

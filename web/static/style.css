@@ -1,10 +1,12 @@
 :root {
+  color-scheme: dark;
   --bg-main: #0f172a;
   --bg-card: #1e293b;
   --bg-card-hover: #334155;
   --bg-input: #0f172a;
   --primary: #f59e0b;
-  --primary-hover: #d97706;
+  --primary-hover: color-mix(in oklab, var(--primary) 85%, black);
+  --primary-subtle: color-mix(in oklab, var(--primary) 12%, transparent);
   --secondary: #3b82f6;
   --accent-red: #ef4444;
   --accent-green: #10b981;
@@ -13,12 +15,26 @@
   --border: #334155;
   --radius: 10px;
   --font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+
+  /* Slider Tokens */
+  --slider-track-size: 6px;
+  --slider-thumb-size: 16px;
+  --slider-track-radius: 999px;
+  --slider-thumb-radius: 50%;
+  --slider-track-color: #334155;
+  --slider-fill-color: var(--primary);
+  --slider-progress: 0%;
 }
 
 * {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+}
+
+html {
+  scrollbar-color: var(--border) var(--bg-main);
+  scrollbar-width: thin;
 }
 
 body {
@@ -242,11 +258,30 @@ body {
   margin-bottom: 18px;
 }
 
+.form-group.field {
+  position: relative;
+}
+
 .form-group label {
   display: block;
   font-size: 0.85rem;
   color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.hint {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.8rem;
   margin-bottom: 6px;
+}
+
+.error-msg {
+  display: none;
+  color: #fca5a5;
+  font-size: 0.8rem;
+  margin-top: 6px;
+  line-height: 1.3;
 }
 
 .form-group input {
@@ -258,10 +293,26 @@ body {
   color: var(--text-main);
   font-size: 0.95rem;
   outline: none;
+  transition: border-color 0.2s, background-color 0.2s;
 }
 
 .form-group input:focus {
   border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 20%, transparent);
+}
+
+/* Modern interaction-based validation feedback */
+:is(input:user-invalid, .user-invalid-fallback) {
+  border-color: var(--accent-red) !important;
+  background-color: color-mix(in oklab, var(--accent-red) 10%, var(--bg-input)) !important;
+}
+
+:is(input:user-invalid, .user-invalid-fallback) + .error-msg {
+  display: block;
+}
+
+input:user-valid {
+  border-color: color-mix(in oklab, var(--accent-green) 60%, var(--border));
 }
 
 .alert-box {
@@ -403,7 +454,7 @@ body {
   margin-top: 6px;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   background-color: var(--bg-main);
   padding: 4px 12px;
   border-radius: 20px;
@@ -414,6 +465,67 @@ body {
 .invite-code-chip strong {
   color: var(--primary);
   letter-spacing: 1px;
+}
+
+/* Accessible Copy Button (copy-button guide) */
+.copy {
+  display: inline-flex;
+  align-items: center;
+  position: relative;
+}
+
+.copy-button {
+  min-inline-size: 26px;
+  min-block-size: 26px;
+  background: color-mix(in oklab, var(--bg-card-hover) 80%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-main);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  padding: 2px 6px;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+.copy-button:hover {
+  background-color: var(--bg-card-hover);
+  border-color: var(--primary);
+}
+
+.copy-button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.copy .tip {
+  position: absolute;
+  inset-inline-start: calc(100% + 8px);
+  inset-block-start: 50%;
+  transform: translateY(-50%);
+  background-color: var(--bg-card);
+  color: var(--accent-green);
+  border: 1px solid var(--accent-green);
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease-out;
+}
+
+.copy-button[data-copied] + .tip {
+  opacity: 1;
+}
+
+.copy-button[data-failed] + .tip {
+  color: var(--accent-red);
+  border-color: var(--accent-red);
+  opacity: 1;
 }
 
 /* PRESENCE BANNER («Кто что смотрит») */
@@ -747,10 +859,84 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* Range Slider (slider guide) */
 .slider-timeline {
   flex: 1;
-  accent-color: var(--primary);
+  appearance: none;
+  inline-size: 100%;
+  block-size: 2rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
   cursor: pointer;
+  accent-color: var(--primary);
+}
+
+/* WebKit / Blink Track */
+.slider-timeline::-webkit-slider-runnable-track {
+  block-size: var(--slider-track-size);
+  border: 0;
+  border-radius: var(--slider-track-radius);
+  background: linear-gradient(
+    to right,
+    var(--slider-fill-color) var(--slider-progress),
+    var(--slider-track-color) var(--slider-progress)
+  );
+  transition: background 0.1s linear;
+}
+
+/* WebKit / Blink Thumb (centered) */
+.slider-timeline::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  inline-size: var(--slider-thumb-size);
+  block-size: var(--slider-thumb-size);
+  margin-block-start: calc((var(--slider-track-size) - var(--slider-thumb-size)) / 2);
+  border: 0;
+  border-radius: var(--slider-thumb-radius);
+  background: var(--slider-fill-color);
+  box-shadow: 0 0 8px color-mix(in oklab, var(--primary) 60%, transparent);
+  transition: transform 0.15s ease;
+}
+
+.slider-timeline:hover::-webkit-slider-thumb {
+  transform: scale(1.15);
+}
+
+/* Firefox Track */
+.slider-timeline::-moz-range-track {
+  block-size: var(--slider-track-size);
+  border: 0;
+  border-radius: var(--slider-track-radius);
+  background: var(--slider-track-color);
+}
+
+/* Firefox Progress */
+.slider-timeline::-moz-range-progress {
+  block-size: var(--slider-track-size);
+  border-radius: var(--slider-track-radius);
+  background: var(--slider-fill-color);
+}
+
+/* Firefox Thumb */
+.slider-timeline::-moz-range-thumb {
+  inline-size: var(--slider-thumb-size);
+  block-size: var(--slider-thumb-size);
+  border: 0;
+  border-radius: var(--slider-thumb-radius);
+  background: var(--slider-fill-color);
+  box-shadow: 0 0 8px color-mix(in oklab, var(--primary) 60%, transparent);
+  transition: transform 0.15s ease;
+}
+
+.slider-timeline:hover::-moz-range-thumb {
+  transform: scale(1.15);
+}
+
+.slider-timeline:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 4px;
 }
 
 /* Floating Reactions */
@@ -950,24 +1136,49 @@ body {
   outline: none;
 }
 
-/* Modals */
-.modal {
-  position: fixed;
-  inset: 0;
-  background-color: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(4px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
+/* ==========================================
+   Modals & Dialogs (dialog & light-dismiss-a-dialog guides)
+   ========================================== */
+dialog:modal {
+  overscroll-behavior: contain; /* stops scroll gestures in the dialog chaining to page */
 }
 
-.modal-dialog {
-  background-color: var(--bg-card);
+dialog::backdrop {
+  overflow: hidden; /* prevents backdrop scrolling */
+  overscroll-behavior: contain;
+  background-color: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(6px);
+  transition: opacity 0.2s ease, display 0.2s allow-discrete, overlay 0.2s allow-discrete;
+}
+
+dialog.modal-dialog-modern {
   border: 1px solid var(--border);
+  background-color: var(--bg-card);
   border-radius: 14px;
-  width: 100%;
-  max-width: 420px;
+  color: var(--text-main);
+  padding: 0;
+  width: 90%;
+  max-width: 440px;
+  margin: auto;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  transform: scale(0.96) translateY(-8px);
+  transition: opacity 0.2s ease, transform 0.2s ease, display 0.2s allow-discrete, overlay 0.2s allow-discrete;
+}
+
+dialog.modal-dialog-modern[open] {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+}
+
+@starting-style {
+  dialog.modal-dialog-modern[open] {
+    opacity: 0;
+    transform: scale(0.96) translateY(-8px);
+  }
+}
+
+.modal-body-container {
   padding: 24px;
 }
 
@@ -978,12 +1189,25 @@ body {
   margin-bottom: 20px;
 }
 
+.modal-header h3 {
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
 .modal-close {
   background: transparent;
   border: none;
   font-size: 1.5rem;
   color: var(--text-muted);
   cursor: pointer;
+  line-height: 1;
+  padding: 4px;
+  border-radius: 4px;
+  transition: color 0.15s;
+}
+
+.modal-close:hover {
+  color: var(--text-main);
 }
 
 .modal-actions {
@@ -993,22 +1217,81 @@ body {
   margin-top: 20px;
 }
 
-/* Toast */
-.toast {
+/* ==========================================
+   Toast Notifications (persistent-toast-notifications guide)
+   ========================================== */
+.toast-region {
   position: fixed;
   bottom: 24px;
   right: 24px;
-  background-color: var(--accent-red);
-  color: #fff;
-  padding: 12px 20px;
-  border-radius: 10px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
-  font-weight: 600;
   z-index: 2000;
-  animation: slideIn 0.3s;
+  pointer-events: none;
 }
 
-@keyframes slideIn {
-  from { transform: translateY(100%); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
+.toast-popover {
+  position: fixed;
+  inset: auto 24px 24px auto;
+  margin: 0;
+  border: 1px solid color-mix(in oklab, var(--primary) 40%, var(--border));
+  background-color: var(--bg-card);
+  color: var(--text-main);
+  padding: 12px 18px;
+  border-radius: 10px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  pointer-events: auto;
+  font-size: 0.9rem;
+  font-weight: 600;
+  opacity: 0;
+  transform: translateY(16px);
+  transition: opacity 0.25s ease, transform 0.25s ease, display 0.25s allow-discrete, overlay 0.25s allow-discrete;
+}
+
+[popover]:is(:popover-open, .\:popover-open) {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@starting-style {
+  [popover]:is(:popover-open, .\:popover-open) {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+}
+
+.toast-text {
+  flex: 1;
+}
+
+.toast-dismiss {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 1.2rem;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: color 0.15s;
+}
+
+.toast-dismiss:hover {
+  color: var(--text-main);
+}
+
+/* ==========================================
+   Accessibility Utilities
+   ========================================== */
+.visually-hidden:where(:not(:focus-within, :active)) {
+  position: absolute !important;
+  clip-path: inset(50%) !important;
+  overflow: hidden !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: -1px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  white-space: nowrap !important;
 }

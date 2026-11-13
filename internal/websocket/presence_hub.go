@@ -5,22 +5,39 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"go.mongodb.org/mongo-driver/v2/bson"
 
 	"popcornhub/internal/auth"
 	"popcornhub/internal/config"
 	"popcornhub/internal/metrics"
 	"popcornhub/internal/models"
+	"popcornhub/internal/repository"
 	"popcornhub/internal/service"
 )
 
+func isAllowedOrigin(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+	u, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	if u.Host == r.Host || strings.HasPrefix(u.Host, "localhost") || strings.HasPrefix(u.Host, "127.0.0.1") {
+		return true
+	}
+	return false
+}
+
 var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		return true // Allow all origins for dev/API flexibility
-	},
+	CheckOrigin:     isAllowedOrigin,
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 }
@@ -40,13 +57,15 @@ type PresenceHub struct {
 	clients         map[string]map[*PresenceClient]bool // userID -> set of clients
 	mu              sync.RWMutex
 	presenceService *service.PresenceService
+	groupRepo       *repository.GroupRepo
 	cfg             *config.Config
 }
 
-func NewPresenceHub(presenceService *service.PresenceService, cfg *config.Config) *PresenceHub {
+func NewPresenceHub(presenceService *service.PresenceService, groupRepo *repository.GroupRepo, cfg *config.Config) *PresenceHub {
 	h := &PresenceHub{
 		clients:         make(map[string]map[*PresenceClient]bool),
 		presenceService: presenceService,
+		groupRepo:       groupRepo,
 		cfg:             cfg,
 	}
 
@@ -67,18 +86,40 @@ func (h *PresenceHub) listenRedisEvents() {
 			continue
 		}
 
-		// Broadcast presence event to all connected clients
-		h.broadcastToAll([]byte(msg.Payload))
+		h.broadcastPresence(ctx, presence, []byte(msg.Payload))
 	}
 }
 
-func (h *PresenceHub) broadcastToAll(data []byte) {
+func (h *PresenceHub) broadcastPresence(ctx context.Context, presence models.UserPresence, data []byte) {
+	targetUsers := make(map[string]bool)
+
+	// Restrict presence broadcast only to shared group members
+	if presence.GroupID != "" {
+		if gOID, err := bson.ObjectIDFromHex(presence.GroupID); err == nil && h.groupRepo != nil {
+			if grp, err := h.groupRepo.FindByID(ctx, gOID); err == nil && grp != nil {
+				for _, m := range grp.Members {
+					targetUsers[m.UserID.Hex()] = true
+				}
+			}
+		}
+	} else if uOID, err := bson.ObjectIDFromHex(presence.UserID); err == nil && h.groupRepo != nil {
+		if grps, err := h.groupRepo.FindByUserID(ctx, uOID); err == nil {
+			for _, grp := range grps {
+				for _, m := range grp.Members {
+					targetUsers[m.UserID.Hex()] = true
+				}
+			}
+		}
+	}
+
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
-	for _, userClients := range h.clients {
-		for c := range userClients {
-			c.Send(data)
+	for uid := range targetUsers {
+		if userClients, ok := h.clients[uid]; ok {
+			for c := range userClients {
+				c.Send(data)
+			}
 		}
 	}
 }
@@ -215,6 +256,30 @@ func (c *PresenceClient) readPump() {
 				mid, _ := raw["media_id"].(string)
 				mt, _ := raw["media_title"].(string)
 				rid, _ := raw["room_id"].(string)
+				gid, _ := raw["group_id"].(string)
+
+				if st != string(models.StatusWatching) && st != string(models.StatusIdle) {
+					continue
+				}
+				if rid != "" {
+					if _, err := bson.ObjectIDFromHex(rid); err != nil {
+						continue
+					}
+				}
+				if mid != "" {
+					if _, err := bson.ObjectIDFromHex(mid); err != nil {
+						continue
+					}
+				}
+				if gid != "" {
+					if _, err := bson.ObjectIDFromHex(gid); err != nil {
+						continue
+					}
+				}
+				if len([]rune(mt)) > 120 {
+					mt = string([]rune(mt)[:120])
+				}
+
 				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 				_ = c.hub.presenceService.SetPresence(ctx, models.UserPresence{
 					UserID:     c.userID,
@@ -223,6 +288,7 @@ func (c *PresenceClient) readPump() {
 					MediaID:    mid,
 					MediaTitle: mt,
 					RoomID:     rid,
+					GroupID:    gid,
 					UpdatedAt:  time.Now().UTC(),
 				})
 				cancel()

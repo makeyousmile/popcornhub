@@ -1,43 +1,89 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"popcornhub/internal/api/handlers"
 	"popcornhub/internal/api/middleware"
 	"popcornhub/internal/config"
+	"popcornhub/internal/database"
 	"popcornhub/internal/websocket"
 )
 
 type RouterDependencies struct {
-	Config          *config.Config
-	AuthHandler     *handlers.AuthHandler
-	GroupHandler    *handlers.GroupHandler
-	MediaHandler    *handlers.MediaHandler
-	RoomHandler     *handlers.RoomHandler
-	PresenceHub     *websocket.PresenceHub
-	RoomHub         *websocket.RoomHub
-	StaticDir       string
+	Config       *config.Config
+	AuthHandler  *handlers.AuthHandler
+	GroupHandler *handlers.GroupHandler
+	MediaHandler *handlers.MediaHandler
+	RoomHandler  *handlers.RoomHandler
+	PresenceHub  *websocket.PresenceHub
+	RoomHub      *websocket.RoomHub
+	StaticDir    string
+	MongoDB      *database.MongoDB
+	RedisClient  *database.RedisClient
 }
 
 func NewRouter(deps RouterDependencies) http.Handler {
 	mux := http.NewServeMux()
 	authMW := middleware.Auth(deps.Config.JWTSecret)
 
-	// Health check
+	// Health check (verifies Mongo and Redis connectivity)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+
+		var mongoOK, redisOK = true, true
+		if deps.MongoDB != nil && deps.MongoDB.Database != nil {
+			if err := deps.MongoDB.Database.Client().Ping(ctx, nil); err != nil {
+				mongoOK = false
+			}
+		}
+		if deps.RedisClient != nil && deps.RedisClient.Client != nil {
+			if err := deps.RedisClient.Client.Ping(ctx).Err(); err != nil {
+				redisOK = false
+			}
+		}
+
+		if !mongoOK || !redisOK {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"status": "degraded",
+				"mongo":  mongoOK,
+				"redis":  redisOK,
+			})
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(map[string]string{
 			"status": "ok",
 			"app":    "popcornhub",
 		})
 	})
 
-	// Prometheus Metrics
-	mux.Handle("GET /metrics", promhttp.Handler())
+	// Prometheus Metrics (with optional METRICS_TOKEN authorization)
+	promHandler := promhttp.Handler()
+	mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, r *http.Request) {
+		if deps.Config.MetricsToken != "" {
+			token := r.Header.Get("X-Metrics-Token")
+			if token == "" {
+				token = r.URL.Query().Get("token")
+			}
+			if token != deps.Config.MetricsToken {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusUnauthorized)
+				_, _ = w.Write([]byte(`{"error":"unauthorized"}`))
+				return
+			}
+		}
+		promHandler.ServeHTTP(w, r)
+	})
 
 	// Public Auth endpoints
 	mux.HandleFunc("POST /api/v1/auth/register", deps.AuthHandler.Register)
@@ -81,10 +127,12 @@ func NewRouter(deps RouterDependencies) http.Handler {
 		})
 	}
 
-	// Global middleware chain: CORS -> Recover -> Logger & Metrics -> Handler
-	return middleware.CORS(
-		middleware.Recover(
-			middleware.LoggerAndMetrics(mux),
+	// Global middleware chain: SecurityHeaders -> CORS -> Recover -> Logger & Metrics -> Handler
+	return middleware.SecurityHeaders(
+		middleware.CORS(
+			middleware.Recover(
+				middleware.LoggerAndMetrics(mux),
+			),
 		),
 	)
 }

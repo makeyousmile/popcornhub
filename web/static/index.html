@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
   <title>PopcornHub — Совместный просмотр контента</title>
   <link rel="stylesheet" href="/static/style.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍿</text></svg>">
@@ -41,18 +42,43 @@
           </div>
 
           <!-- Login Form -->
-          <form id="login-form" class="auth-form">
+          <form id="login-form" class="auth-form" novalidate>
             <h2>С возвращением в кинозал!</h2>
             <p class="subtitle">Войдите, чтобы смотреть видео синхронно с близкими</p>
 
-            <div class="form-group">
-              <label>Email</label>
-              <input type="email" id="login-email" placeholder="ivan@example.com" required value="ivan@example.com">
+            <div class="form-group field">
+              <label for="login-email">Email</label>
+              <span id="login-email-hint" class="hint">Укажите ваш email</span>
+              <input
+                type="email"
+                id="login-email"
+                name="email"
+                autocomplete="username"
+                spellcheck="false"
+                placeholder="ivan@example.com"
+                required
+                aria-describedby="login-email-hint"
+                data-error="login-email-error"
+              >
+              <div id="login-email-error" class="error-msg">
+                <span role="img" aria-label="Ошибка">❌</span> Введите корректный адрес электронной почты.
+              </div>
             </div>
 
-            <div class="form-group">
-              <label>Пароль</label>
-              <input type="password" id="login-password" placeholder="••••••••" required value="secret123">
+            <div class="form-group field">
+              <label for="login-password">Пароль</label>
+              <input
+                type="password"
+                id="login-password"
+                name="password"
+                autocomplete="current-password"
+                placeholder="••••••••"
+                required
+                data-error="login-password-error"
+              >
+              <div id="login-password-error" class="error-msg">
+                <span role="img" aria-label="Ошибка">❌</span> Введите пароль.
+              </div>
             </div>
 
             <div id="login-error" class="alert-box error" style="display: none;"></div>
@@ -61,23 +87,62 @@
           </form>
 
           <!-- Register Form -->
-          <form id="register-form" class="auth-form" style="display: none;">
+          <form id="register-form" class="auth-form" style="display: none;" novalidate>
             <h2>Создайте аккаунт</h2>
             <p class="subtitle">Присоединяйтесь к совместным просмотрам</p>
 
-            <div class="form-group">
-              <label>Имя</label>
-              <input type="text" id="reg-name" placeholder="Иван" required>
+            <div class="form-group field">
+              <label for="reg-name">Имя</label>
+              <input
+                type="text"
+                id="reg-name"
+                name="name"
+                autocomplete="name"
+                placeholder="Иван"
+                required
+                data-error="reg-name-error"
+              >
+              <div id="reg-name-error" class="error-msg">
+                <span role="img" aria-label="Ошибка">❌</span> Пожалуйста, укажите имя.
+              </div>
             </div>
 
-            <div class="form-group">
-              <label>Email</label>
-              <input type="email" id="reg-email" placeholder="ivan@example.com" required>
+            <div class="form-group field">
+              <label for="reg-email">Email</label>
+              <span id="reg-email-hint" class="hint">Формат: ivan@example.com</span>
+              <input
+                type="email"
+                id="reg-email"
+                name="email"
+                autocomplete="username"
+                spellcheck="false"
+                placeholder="ivan@example.com"
+                required
+                aria-describedby="reg-email-hint"
+                data-error="reg-email-error"
+              >
+              <div id="reg-email-error" class="error-msg">
+                <span role="img" aria-label="Ошибка">❌</span> Введите корректный адрес электронной почты.
+              </div>
             </div>
 
-            <div class="form-group">
-              <label>Пароль</label>
-              <input type="password" id="reg-password" placeholder="Минимум 4 символа" required>
+            <div class="form-group field">
+              <label for="reg-password">Пароль</label>
+              <span id="reg-password-hint" class="hint">Минимум 4 символа</span>
+              <input
+                type="password"
+                id="reg-password"
+                name="password"
+                autocomplete="new-password"
+                placeholder="Минимум 4 символа"
+                minlength="4"
+                required
+                aria-describedby="reg-password-hint"
+                data-error="reg-password-error"
+              >
+              <div id="reg-password-error" class="error-msg">
+                <span role="img" aria-label="Ошибка">❌</span> Пароль должен быть не короче 4 символов.
+              </div>
             </div>
 
             <div id="reg-error" class="alert-box error" style="display: none;"></div>
@@ -124,7 +189,12 @@
                     <h2 id="current-group-name">Семья</h2>
                     <div class="invite-code-chip">
                       <span>Инвайт-код: <strong id="current-invite-code">FAM-9821</strong></span>
-                      <button id="copy-invite-code" class="btn-icon" title="Скопировать код">📋</button>
+                      <span class="copy">
+                        <button id="copy-invite-code" type="button" class="copy-button" command="--copy" commandfor="current-invite-code" aria-label="Скопировать инвайт-код">
+                          <span class="icon" aria-hidden="true">📋</span>
+                        </button>
+                        <span class="tip" role="status"></span>
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -246,17 +316,17 @@
       </section>
     </main>
 
-    <!-- Modal: Create Group -->
-    <div id="modal-create-group" class="modal" style="display: none;">
-      <div class="modal-dialog">
+    <!-- Modal: Create Group (Native Dialog with closedby and inert backdrop) -->
+    <dialog id="modal-create-group" class="modal-dialog-modern" closedby="any" aria-labelledby="modal-create-title">
+      <div class="modal-body-container">
         <div class="modal-header">
-          <h3>Создать новую группу</h3>
-          <button class="modal-close" data-close="modal-create-group">&times;</button>
+          <h3 id="modal-create-title">Создать новую группу</h3>
+          <button type="button" class="modal-close" data-close="modal-create-group" aria-label="Закрыть">&times;</button>
         </div>
         <form id="create-group-form">
-          <div class="form-group">
-            <label>Название группы</label>
-            <input type="text" id="create-group-name" placeholder="Например: Семья, Друзья, Киноклуб" required>
+          <div class="form-group field">
+            <label for="create-group-name">Название группы</label>
+            <input type="text" id="create-group-name" name="group_name" placeholder="Например: Семья, Друзья, Киноклуб" required>
           </div>
           <div class="modal-actions">
             <button type="button" class="btn btn-secondary" data-close="modal-create-group">Отмена</button>
@@ -264,19 +334,19 @@
           </div>
         </form>
       </div>
-    </div>
+    </dialog>
 
-    <!-- Modal: Join Group -->
-    <div id="modal-join-group" class="modal" style="display: none;">
-      <div class="modal-dialog">
+    <!-- Modal: Join Group (Native Dialog with closedby and inert backdrop) -->
+    <dialog id="modal-join-group" class="modal-dialog-modern" closedby="any" aria-labelledby="modal-join-title">
+      <div class="modal-body-container">
         <div class="modal-header">
-          <h3>Вступить в группу</h3>
-          <button class="modal-close" data-close="modal-join-group">&times;</button>
+          <h3 id="modal-join-title">Вступить в группу</h3>
+          <button type="button" class="modal-close" data-close="modal-join-group" aria-label="Закрыть">&times;</button>
         </div>
         <form id="join-group-form">
-          <div class="form-group">
-            <label>Инвайт-код</label>
-            <input type="text" id="join-invite-code" placeholder="Например: FAM-9821" style="text-transform: uppercase;" required>
+          <div class="form-group field">
+            <label for="join-invite-code">Инвайт-код</label>
+            <input type="text" id="join-invite-code" name="invite_code" placeholder="Например: FAM-9821" style="text-transform: uppercase;" required>
           </div>
           <div id="join-error" class="alert-box error" style="display: none;"></div>
           <div class="modal-actions">
@@ -285,10 +355,15 @@
           </div>
         </form>
       </div>
-    </div>
+    </dialog>
 
-    <!-- Rate Limit Toast Notification -->
-    <div id="toast-notification" class="toast" style="display: none;"></div>
+    <!-- Persistent Toast Notification Region (Popover API & Accessible Region) -->
+    <div id="toast-region" role="region" aria-label="Уведомления" class="toast-region">
+      <div id="toast-notification" popover="manual" class="toast-popover">
+        <span id="toast-message" class="toast-text"></span>
+        <button type="button" id="toast-close-btn" class="toast-dismiss" aria-label="Закрыть уведомление">&times;</button>
+      </div>
+    </div>
   </div>
 
   <script src="/static/app.js"></script>

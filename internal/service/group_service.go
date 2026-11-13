@@ -37,32 +37,41 @@ func (s *GroupService) CreateGroup(ctx context.Context, ownerID bson.ObjectID, n
 	if name == "" {
 		return nil, ErrGroupNameEmpty
 	}
-
-	inviteCode, err := generateInviteCode(name)
-	if err != nil {
-		return nil, err
+	if len([]rune(name)) > 100 {
+		return nil, errors.New("group name is too long (max 100 chars)")
 	}
 
-	now := time.Now().UTC()
-	group := &models.Group{
-		Name:       name,
-		InviteCode: inviteCode,
-		OwnerID:    ownerID,
-		Members: []models.GroupMember{
-			{
-				UserID:   ownerID,
-				Role:     models.RoleOwner,
-				JoinedAt: now,
+	for attempt := 0; attempt < 5; attempt++ {
+		inviteCode, err := generateInviteCode(name)
+		if err != nil {
+			return nil, err
+		}
+
+		now := time.Now().UTC()
+		group := &models.Group{
+			Name:       name,
+			InviteCode: inviteCode,
+			OwnerID:    ownerID,
+			Members: []models.GroupMember{
+				{
+					UserID:   ownerID,
+					Role:     models.RoleOwner,
+					JoinedAt: now,
+				},
 			},
-		},
-		CreatedAt: now,
+			CreatedAt: now,
+		}
+
+		err = s.groupRepo.Create(ctx, group)
+		if err == nil {
+			return group, nil
+		}
+		if !errors.Is(err, repository.ErrGroupAlreadyExists) {
+			return nil, err
+		}
 	}
 
-	if err := s.groupRepo.Create(ctx, group); err != nil {
-		return nil, err
-	}
-
-	return group, nil
+	return nil, errors.New("could not generate unique invite code, please try again")
 }
 
 func (s *GroupService) JoinGroupByCode(ctx context.Context, userID bson.ObjectID, inviteCode string) (*models.Group, error) {
@@ -165,11 +174,11 @@ func generateInviteCode(groupName string) (string, error) {
 		}
 	}
 
-	n, err := rand.Int(rand.Reader, big.NewInt(9000))
+	n, err := rand.Int(rand.Reader, big.NewInt(900000))
 	if err != nil {
 		return "", err
 	}
-	codeNum := n.Int64() + 1000
+	codeNum := n.Int64() + 100000
 
-	return fmt.Sprintf("%s-%04d", prefix, codeNum), nil
+	return fmt.Sprintf("%s-%06d", prefix, codeNum), nil
 }

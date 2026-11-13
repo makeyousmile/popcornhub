@@ -100,6 +100,8 @@
     chatInput: document.getElementById('chat-input'),
     syncStatusText: document.getElementById('sync-status-text'),
     toastNotification: document.getElementById('toast-notification'),
+    toastMessage: document.getElementById('toast-message'),
+    toastCloseBtn: document.getElementById('toast-close-btn'),
   };
 
   // ==========================================
@@ -230,6 +232,10 @@
 
   el.loginForm.addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (!el.loginForm.checkValidity()) {
+      el.loginForm.reportValidity();
+      return;
+    }
     el.loginError.style.display = 'none';
     try {
       const res = await apiRequest('/api/v1/auth/login', {
@@ -253,6 +259,10 @@
 
   el.registerForm.addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (!el.registerForm.checkValidity()) {
+      el.registerForm.reportValidity();
+      return;
+    }
     el.regError.style.display = 'none';
     try {
       const res = await apiRequest('/api/v1/auth/register', {
@@ -341,11 +351,18 @@
     }
   }
 
+  let presenceDebounceTimer = null;
   function handlePresenceUpdate(presence) {
-    // If the presence update is for a member in the currently selected group, refresh presence cards
-    if (state.currentGroup) {
-      loadGroupPresence(state.currentGroup.id);
+    if (!state.currentGroup) return;
+    if (presence && presence.group_id && presence.group_id !== state.currentGroup.id) {
+      return;
     }
+    clearTimeout(presenceDebounceTimer);
+    presenceDebounceTimer = setTimeout(() => {
+      if (state.currentGroup) {
+        loadGroupPresence(state.currentGroup.id);
+      }
+    }, 300);
   }
 
   async function loadGroupPresence(groupId) {
@@ -369,13 +386,13 @@
     el.presenceCards.innerHTML = activeWatchers.map(p => `
       <div class="presence-card">
         <div class="presence-user-info">
-          <img src="${p.avatar_url || 'https://api.dicebear.com/7.x/bottts/svg?seed=' + p.user_name}" alt="User">
+          <img src="${safeAvatar(p.avatar_url, p.user_name)}" alt="User">
           <div class="presence-text">
             <strong>${escapeHtml(p.user_name)}</strong>
             <div class="activity-desc">🎬 Смотрит: «${escapeHtml(p.media_title || 'Фильм')}»</div>
           </div>
         </div>
-        <button class="btn-join-watch" data-room-id="${p.room_id}">
+        <button class="btn-join-watch" data-room-id="${escapeHtml(p.room_id)}">
           🚀 Присоединиться
         </button>
       </div>
@@ -449,7 +466,7 @@
       el.membersCount.textContent = members.length;
       el.groupMembersList.innerHTML = members.map(m => `
         <div class="member-chip">
-          <img src="${m.avatar_url || 'https://api.dicebear.com/7.x/bottts/svg?seed=' + m.name}" alt="${escapeHtml(m.name)}">
+          <img src="${safeAvatar(m.avatar_url, m.name)}" alt="${escapeHtml(m.name)}">
           <div class="member-chip-info">
             <span class="member-chip-name">${escapeHtml(m.name)}</span>
             <span class="member-chip-role">${m.role === 'owner' ? '👑 Создатель' : 'Участник'}</span>
@@ -472,10 +489,10 @@
 
     el.groupMediaList.innerHTML = state.catalog.map(item => `
       <div class="media-card">
-        <img class="media-poster" src="${item.poster_url}" alt="${escapeHtml(item.title)}">
+        <img class="media-poster" src="${safeUrl(item.poster_url, '')}" alt="${escapeHtml(item.title)}">
         <div class="media-body">
           <div class="media-title">${escapeHtml(item.title)}</div>
-          <button class="btn btn-primary-sm btn-start-watch" data-media-id="${item.id}">
+          <button class="btn btn-primary-sm btn-start-watch" data-media-id="${escapeHtml(item.id)}">
             ▶ Смотреть вместе
           </button>
         </div>
@@ -490,22 +507,59 @@
     });
   }
 
-  // Modals
+  // ==========================================
+  // Modals (dialog & light-dismiss-a-dialog guides)
+  // ==========================================
+  function openModal(modalEl) {
+    if (typeof modalEl.showModal === 'function') {
+      modalEl.showModal();
+    } else {
+      modalEl.style.display = 'block';
+    }
+  }
+
+  function closeModal(modalEl) {
+    if (typeof modalEl.close === 'function') {
+      modalEl.close();
+    } else {
+      modalEl.style.display = 'none';
+    }
+  }
+
   el.openCreateGroupModal.addEventListener('click', () => {
-    el.modalCreateGroup.style.display = 'flex';
+    openModal(el.modalCreateGroup);
   });
 
   el.openJoinGroupModal.addEventListener('click', () => {
-    el.modalJoinGroup.style.display = 'flex';
     el.joinError.style.display = 'none';
+    openModal(el.modalJoinGroup);
   });
 
   document.querySelectorAll('[data-close]').forEach(btn => {
     btn.addEventListener('click', () => {
       const modalId = btn.getAttribute('data-close');
-      document.getElementById(modalId).style.display = 'none';
+      const dlg = document.getElementById(modalId);
+      if (dlg) closeModal(dlg);
     });
   });
+
+  // Light-dismiss fallback for browsers lacking native closedby attribute
+  if (!('closedBy' in HTMLDialogElement.prototype)) {
+    document.querySelectorAll('dialog[closedby="any"]').forEach(dialog => {
+      let pressedOutside = false;
+      dialog.addEventListener('pointerdown', (e) => {
+        const r = dialog.getBoundingClientRect();
+        pressedOutside = e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+      });
+      dialog.addEventListener('pointerup', (e) => {
+        const r = dialog.getBoundingClientRect();
+        const releasedOutside = e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+        if (pressedOutside && releasedOutside) {
+          closeModal(dialog);
+        }
+      });
+    });
+  }
 
   el.createGroupForm.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -514,7 +568,7 @@
         method: 'POST',
         body: JSON.stringify({ name: el.createGroupName.value }),
       });
-      el.modalCreateGroup.style.display = 'none';
+      closeModal(el.modalCreateGroup);
       el.createGroupName.value = '';
       await loadUserGroups();
       selectGroup(newGroup);
@@ -531,7 +585,7 @@
         method: 'POST',
         body: JSON.stringify({ invite_code: el.joinInviteCode.value }),
       });
-      el.modalJoinGroup.style.display = 'none';
+      closeModal(el.modalJoinGroup);
       el.joinInviteCode.value = '';
       await loadUserGroups();
       selectGroup(joined);
@@ -541,11 +595,65 @@
     }
   });
 
-  el.copyInviteCode.addEventListener('click', () => {
-    const code = el.currentInviteCode.textContent;
-    navigator.clipboard.writeText(code);
-    showToast(`Код ${code} скопирован в буфер!`);
-  });
+  // ==========================================
+  // Accessible Copy Button (copy-button guide)
+  // ==========================================
+  const copyTimers = new WeakMap();
+  let lastCopyMsg = '';
+
+  function reportCopy(button, ok) {
+    const tip = button.parentElement ? button.parentElement.querySelector('.tip, .copy-tip') : null;
+    clearTimeout(copyTimers.get(button));
+    button.removeAttribute('data-copied');
+    button.removeAttribute('data-failed');
+
+    let msg = ok ? 'Скопировано!' : 'Ошибка копирования';
+    if (msg === lastCopyMsg) msg += '\u00A0'; // VoiceOver repeated announcement fix
+    lastCopyMsg = msg;
+
+    if (tip) tip.textContent = '';
+    void button.offsetWidth; // restart transition
+    button.setAttribute(ok ? 'data-copied' : 'data-failed', '');
+    if (tip) {
+      requestAnimationFrame(() => { tip.textContent = msg; });
+    }
+    copyTimers.set(button, setTimeout(() => {
+      button.removeAttribute('data-copied');
+      button.removeAttribute('data-failed');
+      if (tip) tip.textContent = '';
+    }, 2200));
+  }
+
+  function legacyCopy(text) {
+    const field = Object.assign(document.createElement('textarea'), { value: text });
+    field.setAttribute('readonly', '');
+    field.style.cssText = 'position:fixed;top:0;opacity:0';
+    document.body.append(field);
+    field.select();
+    try { return document.execCommand('copy'); } finally { field.remove(); }
+  }
+
+  async function copyText(button, text) {
+    if (!text) return;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        if (!legacyCopy(text)) throw new Error('Copy failed');
+      }
+      reportCopy(button, true);
+      showToast(`Код ${text} скопирован в буфер!`);
+    } catch (e) {
+      reportCopy(button, false);
+    }
+  }
+
+  if (el.copyInviteCode) {
+    el.copyInviteCode.addEventListener('click', () => {
+      const code = el.currentInviteCode.textContent.trim();
+      copyText(el.copyInviteCode, code);
+    });
+  }
 
   // ==========================================
   // Media Catalog
@@ -565,17 +673,17 @@
   function renderCatalog() {
     el.catalogGrid.innerHTML = state.catalog.map(item => `
       <div class="media-card">
-        <img class="media-poster" src="${item.poster_url}" alt="${escapeHtml(item.title)}">
+        <img class="media-poster" src="${safeUrl(item.poster_url, '')}" alt="${escapeHtml(item.title)}">
         <div class="media-body">
           <div>
             <div class="media-title">${escapeHtml(item.title)}</div>
             <div class="media-meta-tags">
               ${(item.metadata.genre || []).map(g => `<span class="meta-tag">${escapeHtml(g)}</span>`).join('')}
-              <span class="meta-tag">${item.metadata.year || ''}</span>
+              <span class="meta-tag">${escapeHtml(item.metadata.year || '')}</span>
               <span class="meta-tag">⏱ ${Math.round((item.duration_sec || 0)/60)} мин</span>
             </div>
           </div>
-          <button class="btn btn-primary full-width btn-catalog-watch" data-media-id="${item.id}">
+          <button class="btn btn-primary full-width btn-catalog-watch" data-media-id="${escapeHtml(item.id)}">
             🍿 Смотреть с группой
           </button>
         </div>
@@ -854,8 +962,21 @@
     });
   });
 
+  function syncSliderProgress() {
+    const val = parseFloat(el.seekSlider.value) || 0;
+    const max = parseFloat(el.seekSlider.max) || 100;
+    const min = parseFloat(el.seekSlider.min) || 0;
+    const percent = max > min ? ((val - min) / (max - min)) * 100 : 0;
+    el.seekSlider.style.setProperty('--slider-progress', `${percent}%`);
+  }
+
+  el.seekSlider.addEventListener('input', () => {
+    syncSliderProgress();
+  });
+
   el.seekSlider.addEventListener('change', () => {
     const newPos = parseFloat(el.seekSlider.value);
+    syncSliderProgress();
     sendRoomAction({
       type: 'SEEK',
       position_sec: newPos,
@@ -874,6 +995,7 @@
       el.durationTimeText.textContent = formatTime(video.duration);
       el.seekSlider.max = video.duration;
       el.seekSlider.value = video.currentTime;
+      syncSliderProgress();
     }
   });
 
@@ -923,7 +1045,7 @@
     el.activeUsersCount.textContent = users.length;
     el.activeViewersList.innerHTML = users.map(u => `
       <div class="viewer-badge" title="${escapeHtml(u.user_name)}">
-        <img src="${u.avatar_url || 'https://api.dicebear.com/7.x/bottts/svg?seed=' + u.user_name}" alt="User">
+        <img src="${safeAvatar(u.avatar_url, u.user_name)}" alt="User">
         <span>${escapeHtml(u.user_name)}</span>
       </div>
     `).join('');
@@ -958,14 +1080,188 @@
     el.chatMessages.scrollTop = el.chatMessages.scrollHeight;
   }
 
-  // Utilities
+  // ==========================================
+  // Toast Notifications (persistent-toast-notifications guide)
+  // ==========================================
+  let toastTimer = null;
+  let priorToastFocus = null;
+
   function showToast(message) {
-    el.toastNotification.textContent = message;
-    el.toastNotification.style.display = 'block';
-    setTimeout(() => {
-      el.toastNotification.style.display = 'none';
-    }, 3500);
+    const toast = el.toastNotification;
+    const msgEl = el.toastMessage || toast;
+    if (msgEl) msgEl.textContent = message;
+
+    priorToastFocus = document.activeElement;
+
+    // Open via native Popover API or fallback
+    if (typeof toast.showPopover === 'function') {
+      try {
+        toast.showPopover();
+      } catch (err) {
+        toast.style.display = 'flex';
+      }
+    } else {
+      toast.style.display = 'flex';
+    }
+
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      // Pause dismissal if user focus is currently inside the toast
+      if (toast.contains(document.activeElement)) {
+        const onFocusOut = () => {
+          toast.removeEventListener('focusout', onFocusOut);
+          hideToast();
+        };
+        toast.addEventListener('focusout', onFocusOut);
+      } else {
+        hideToast();
+      }
+    }, 4000);
   }
+
+  function hideToast() {
+    const toast = el.toastNotification;
+    if (typeof toast.hidePopover === 'function') {
+      try {
+        toast.hidePopover();
+      } catch (err) {
+        toast.style.display = 'none';
+      }
+    } else {
+      toast.style.display = 'none';
+    }
+  }
+
+  if (el.toastCloseBtn) {
+    el.toastCloseBtn.addEventListener('click', () => {
+      hideToast();
+      if (priorToastFocus && typeof priorToastFocus.focus === 'function') {
+        priorToastFocus.focus();
+      }
+    });
+  }
+
+  // ==========================================
+  // Form Validation & ARIA Sync (validate-input-after-interaction guide)
+  // ==========================================
+  const validationAnnouncer = document.createElement('div');
+  validationAnnouncer.setAttribute('aria-live', 'polite');
+  validationAnnouncer.classList.add('visually-hidden');
+  document.body.append(validationAnnouncer);
+  let announceTimer;
+  let announcedField;
+
+  const spokenText = (node) => {
+    const copy = node.cloneNode(true);
+    copy.querySelectorAll('[aria-hidden="true"]').forEach(n => n.remove());
+    copy.querySelectorAll('[role="img"][aria-label]').forEach(n => n.replaceWith(`${n.getAttribute('aria-label')}: `));
+    return copy.textContent.replace(/\s+/g, ' ').trim();
+  };
+
+  const linkFieldError = (el, shown) => {
+    const errorId = el.dataset.error;
+    if (!errorId) return;
+    const ids = (el.getAttribute('aria-describedby') || '').split(/\s+/).filter(id => id && id !== errorId);
+    if (shown) ids.push(errorId);
+    if (ids.length) el.setAttribute('aria-describedby', ids.join(' '));
+    else el.removeAttribute('aria-describedby');
+  };
+
+  const announceFieldError = (el) => {
+    const error = document.getElementById(el.dataset.error);
+    if (!error) return;
+    const label = el.labels?.[0] ? `${spokenText(el.labels[0])}: ` : '';
+    clearTimeout(announceTimer);
+    validationAnnouncer.textContent = '';
+    announcedField = el;
+    announceTimer = setTimeout(() => {
+      validationAnnouncer.textContent = label + spokenText(error);
+    }, 500);
+  };
+
+  const flaggedAria = new WeakSet();
+  const announcedErrors = new WeakSet();
+
+  const syncAriaState = (el, announce = false) => {
+    if (!el.matches?.('input, select, textarea')) return;
+    const isInvalid = el.matches(':user-invalid') || el.classList.contains('user-invalid-fallback');
+    if (isInvalid) {
+      if (announce && !announcedErrors.has(el)) {
+        announceFieldError(el);
+        announcedErrors.add(el);
+      }
+      el.setAttribute('aria-invalid', 'true');
+      linkFieldError(el, true);
+      flaggedAria.add(el);
+    } else if (flaggedAria.has(el) || el.getAttribute('aria-invalid') !== 'true') {
+      el.setAttribute('aria-invalid', 'false');
+      linkFieldError(el, false);
+      flaggedAria.delete(el);
+      announcedErrors.delete(el);
+      if (announcedField === el) {
+        clearTimeout(announceTimer);
+        validationAnnouncer.textContent = '';
+      }
+    }
+  };
+
+  const UserInvalidHandler = (() => {
+    const dirtyInputs = new WeakMap();
+
+    const updateInputState = (input) => {
+      const isValid = input.validity.valid;
+      input.classList.toggle('user-invalid-fallback', !isValid);
+      input.classList.toggle('user-valid-fallback', isValid);
+      syncAriaState(input, !isValid);
+    };
+
+    const handleInputValidationEvent = (event) => {
+      const input = event.target;
+      if (!input.checkValidity) return;
+
+      if (event.type === 'invalid') {
+        dirtyInputs.set(input, { hasInteracted: true, hasBlurred: true });
+        updateInputState(input);
+        return;
+      }
+
+      if (event.type === 'input' || event.type === 'change') {
+        const s = dirtyInputs.get(input) || { hasInteracted: false, hasBlurred: false };
+        s.hasInteracted = true;
+        dirtyInputs.set(input, s);
+        if (s.hasBlurred) updateInputState(input);
+      } else if (event.type === 'blur') {
+        const s = dirtyInputs.get(input) || { hasInteracted: false, hasBlurred: false };
+        s.hasBlurred = true;
+        dirtyInputs.set(input, s);
+        if (s.hasInteracted) updateInputState(input);
+      }
+    };
+
+    const init = (root = document) => {
+      root.querySelectorAll('input, select, textarea').forEach(el => syncAriaState(el));
+
+      if (window.CSS && CSS.supports && CSS.supports('selector(:user-invalid)')) {
+        root.addEventListener('blur', (e) => syncAriaState(e.target, true), true);
+        root.addEventListener('input', (e) => {
+          if (e.target.hasAttribute('aria-invalid')) syncAriaState(e.target);
+        });
+        root.addEventListener('change', (e) => syncAriaState(e.target, true), true);
+        root.addEventListener('invalid', (e) => {
+          announcedErrors.add(e.target);
+          syncAriaState(e.target);
+        }, true);
+        return;
+      }
+
+      root.addEventListener('blur', handleInputValidationEvent, true);
+      root.addEventListener('input', handleInputValidationEvent, true);
+      root.addEventListener('change', handleInputValidationEvent, true);
+      root.addEventListener('invalid', handleInputValidationEvent, true);
+    };
+
+    return { init };
+  })();
 
   function formatTime(seconds) {
     if (isNaN(seconds)) return '00:00';
@@ -975,8 +1271,8 @@
   }
 
   function escapeHtml(str) {
-    if (!str) return '';
-    return str.replace(/[&<>'"]/g, tag => ({
+    if (str === null || str === undefined) return '';
+    return String(str).replace(/[&<>'"]/g, tag => ({
       '&': '&amp;',
       '<': '&lt;',
       '>': '&gt;',
@@ -985,6 +1281,22 @@
     }[tag] || tag));
   }
 
+  function safeUrl(url, fallback) {
+    if (!url || typeof url !== 'string') return fallback || '';
+    const trimmed = url.trim();
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('/')) {
+      return escapeHtml(trimmed);
+    }
+    return fallback || '';
+  }
+
+  function safeAvatar(avatarUrl, seed) {
+    const safeSeed = encodeURIComponent(seed || 'user');
+    const fallback = `https://api.dicebear.com/7.x/bottts/svg?seed=${safeSeed}`;
+    return safeUrl(avatarUrl, fallback);
+  }
+
   // Start initialization
+  UserInvalidHandler.init();
   checkAuth();
 })();

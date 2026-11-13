@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -38,6 +39,7 @@ type LocalRoom struct {
 	GroupID      bson.ObjectID
 	MediaID      bson.ObjectID
 	MediaTitle   string
+	durationSec  float64
 	mu           sync.RWMutex
 	isPlaying    bool
 	positionSec  float64
@@ -46,6 +48,7 @@ type LocalRoom struct {
 	clients      map[*RoomClient]bool
 	pubsub       *redis.PubSub
 	stopChan     chan struct{}
+	isClosed     bool
 }
 
 func (lr *LocalRoom) CurrentPosition() (float64, bool) {
@@ -57,7 +60,11 @@ func (lr *LocalRoom) CurrentPosition() (float64, bool) {
 	}
 
 	elapsed := time.Since(lr.updatedAt).Seconds()
-	return lr.positionSec + elapsed, true
+	pos := lr.positionSec + elapsed
+	if lr.durationSec > 0 && pos > lr.durationSec {
+		pos = lr.durationSec
+	}
+	return pos, true
 }
 
 type RoomHub struct {
@@ -150,11 +157,13 @@ func (h *RoomHub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		avatar = userDoc.AvatarURL
 	}
 
-	// Fetch media title for presence
+	// Fetch media title and duration for presence & sync
 	mediaTitle := ""
+	var durationSec float64
 	mediaDoc, _ := h.mediaRepo.FindByID(ctx, roomDoc.MediaID)
 	if mediaDoc != nil {
 		mediaTitle = mediaDoc.Title
+		durationSec = mediaDoc.DurationSec
 	}
 
 	conn, err := upgrader.Upgrade(w, r, nil)
@@ -163,7 +172,7 @@ func (h *RoomHub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	localRoom := h.getOrCreateLocalRoom(roomDoc, mediaTitle)
+	localRoom := h.getOrCreateLocalRoom(roomDoc, mediaTitle, durationSec)
 
 	client := &RoomClient{
 		hub:       h,
@@ -225,13 +234,18 @@ func (h *RoomHub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	go client.readPump()
 }
 
-func (h *RoomHub) getOrCreateLocalRoom(doc *models.WatchRoom, mediaTitle string) *LocalRoom {
+func (h *RoomHub) getOrCreateLocalRoom(doc *models.WatchRoom, mediaTitle string, durationSec float64) *LocalRoom {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
 	roomKey := doc.ID.Hex()
 	if lr, ok := h.rooms[roomKey]; ok {
-		return lr
+		lr.mu.RLock()
+		closed := lr.isClosed
+		lr.mu.RUnlock()
+		if !closed {
+			return lr
+		}
 	}
 
 	lr := &LocalRoom{
@@ -239,6 +253,7 @@ func (h *RoomHub) getOrCreateLocalRoom(doc *models.WatchRoom, mediaTitle string)
 		GroupID:      doc.GroupID,
 		MediaID:      doc.MediaID,
 		MediaTitle:   mediaTitle,
+		durationSec:  durationSec,
 		isPlaying:    doc.PlaybackState.IsPlaying,
 		positionSec:  doc.PlaybackState.PositionSec,
 		updatedAt:    doc.PlaybackState.UpdatedAt,
@@ -265,6 +280,30 @@ func (h *RoomHub) listenRedisRoom(lr *LocalRoom) {
 		case msg, ok := <-ch:
 			if !ok {
 				return
+			}
+			var wsMsg WSMessage
+			if err := json.Unmarshal([]byte(msg.Payload), &wsMsg); err == nil {
+				if wsMsg.Type == ActionPlay || wsMsg.Type == ActionPause || wsMsg.Type == ActionSeek {
+					lr.mu.Lock()
+					actionTime := time.Now().UTC()
+					if wsMsg.ServerTime > 0 {
+						actionTime = time.UnixMilli(wsMsg.ServerTime).UTC()
+					}
+					switch wsMsg.Type {
+					case ActionPlay:
+						lr.isPlaying = true
+						lr.positionSec = wsMsg.PositionSec
+						lr.updatedAt = actionTime
+					case ActionPause:
+						lr.isPlaying = false
+						lr.positionSec = wsMsg.PositionSec
+						lr.updatedAt = actionTime
+					case ActionSeek:
+						lr.positionSec = wsMsg.PositionSec
+						lr.updatedAt = actionTime
+					}
+					lr.mu.Unlock()
+				}
 			}
 			lr.broadcastLocal([]byte(msg.Payload))
 		}
@@ -337,14 +376,17 @@ func (h *RoomHub) unregisterClient(room *LocalRoom, c *RoomClient) {
 		})
 	}(room.RoomID, c.userID, c.userID.Hex(), c.userName)
 
-	// If no local clients left in room after grace period, clean up
+	// If no local clients left in room, clean up safely
 	if remaining == 0 {
 		h.mu.Lock()
-		if len(room.clients) == 0 {
+		room.mu.Lock()
+		if len(room.clients) == 0 && !room.isClosed {
+			room.isClosed = true
 			close(room.stopChan)
 			_ = room.pubsub.Close()
 			delete(h.rooms, room.RoomID.Hex())
 		}
+		room.mu.Unlock()
 		h.mu.Unlock()
 	}
 }
@@ -355,7 +397,16 @@ func (h *RoomHub) broadcastToRedis(roomID string, msg WSMessage) {
 		return
 	}
 	channel := "popcornhub:room:" + roomID
-	_ = h.rdb.Publish(context.Background(), channel, data).Err()
+	err = h.rdb.Publish(context.Background(), channel, data).Err()
+	if err != nil {
+		slog.Warn("Failed to publish room event to Redis, fallback to local broadcast", "error", err, "room_id", roomID)
+		h.mu.RLock()
+		lr := h.rooms[roomID]
+		h.mu.RUnlock()
+		if lr != nil {
+			lr.broadcastLocal(data)
+		}
+	}
 }
 
 func (c *RoomClient) Send(data []byte) {
@@ -431,6 +482,14 @@ func (c *RoomClient) handleIncomingAction(msg WSMessage) {
 
 		metrics.RoomActionsTotal.WithLabelValues(msg.Type).Inc()
 
+		// Validate & clamp position
+		if msg.PositionSec < 0 {
+			msg.PositionSec = 0
+		}
+		if c.room.durationSec > 0 && msg.PositionSec > c.room.durationSec {
+			msg.PositionSec = c.room.durationSec
+		}
+
 		// 2. Collaborative Democratic Playback State Update
 		c.room.mu.Lock()
 		switch msg.Type {
@@ -492,8 +551,12 @@ func (c *RoomClient) handleIncomingAction(msg WSMessage) {
 		c.Send(data)
 
 	case ActionChatMessage:
+		msg.Text = strings.TrimSpace(msg.Text)
 		if msg.Text == "" {
 			return
+		}
+		if len([]rune(msg.Text)) > 500 {
+			msg.Text = string([]rune(msg.Text)[:500])
 		}
 		metrics.RoomActionsTotal.WithLabelValues("chat").Inc()
 
@@ -510,8 +573,12 @@ func (c *RoomClient) handleIncomingAction(msg WSMessage) {
 		c.hub.broadcastToRedis(c.room.RoomID.Hex(), chatBroadcast)
 
 	case ActionReaction:
+		msg.Emoji = strings.TrimSpace(msg.Emoji)
 		if msg.Emoji == "" {
 			return
+		}
+		if len([]rune(msg.Emoji)) > 8 {
+			msg.Emoji = string([]rune(msg.Emoji)[:8])
 		}
 		metrics.RoomActionsTotal.WithLabelValues("reaction").Inc()
 

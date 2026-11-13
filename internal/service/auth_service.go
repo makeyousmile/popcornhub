@@ -17,7 +17,21 @@ import (
 var (
 	ErrInvalidCredentials = errors.New("invalid email or password")
 	ErrEmptyFields        = errors.New("name, email and password are required")
+	ErrInvalidEmail       = errors.New("invalid email format")
+	ErrPasswordTooShort   = errors.New("password must be at least 6 characters")
 )
+
+func isValidEmail(email string) bool {
+	if len(email) < 5 || len(email) > 120 {
+		return false
+	}
+	at := strings.IndexByte(email, '@')
+	if at <= 0 || at >= len(email)-1 {
+		return false
+	}
+	dot := strings.LastIndexByte(email[at:], '.')
+	return dot > 0 && dot < len(email[at:])-1
+}
 
 type AuthService struct {
 	userRepo *repository.UserRepo
@@ -47,8 +61,20 @@ func (s *AuthService) Register(ctx context.Context, input RegisterInput) (*AuthR
 	input.Email = strings.TrimSpace(strings.ToLower(input.Email))
 	input.Name = strings.TrimSpace(input.Name)
 
-	if input.Email == "" || input.Name == "" || len(input.Password) < 4 {
+	if input.Email == "" || input.Name == "" || input.Password == "" {
 		return nil, ErrEmptyFields
+	}
+
+	if len(input.Password) < 6 {
+		return nil, ErrPasswordTooShort
+	}
+
+	if len([]rune(input.Name)) > 60 || len([]rune(input.Email)) > 120 {
+		return nil, errors.New("name or email is too long")
+	}
+
+	if !isValidEmail(input.Email) {
+		return nil, ErrInvalidEmail
 	}
 
 	hash, err := auth.HashPassword(input.Password)
@@ -56,8 +82,8 @@ func (s *AuthService) Register(ctx context.Context, input RegisterInput) (*AuthR
 		return nil, err
 	}
 
-	avatar := input.AvatarURL
-	if avatar == "" {
+	avatar := strings.TrimSpace(input.AvatarURL)
+	if avatar == "" || (!strings.HasPrefix(avatar, "http://") && !strings.HasPrefix(avatar, "https://")) {
 		avatar = "https://api.dicebear.com/7.x/bottts/svg?seed=" + input.Name
 	}
 

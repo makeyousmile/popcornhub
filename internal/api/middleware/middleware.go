@@ -56,7 +56,11 @@ func LoggerAndMetrics(next http.Handler) http.Handler {
 		duration := time.Since(start)
 		pattern := r.Pattern
 		if pattern == "" {
-			pattern = r.URL.Path
+			if wrapped.statusCode == http.StatusNotFound {
+				pattern = "not_found"
+			} else {
+				pattern = "unmatched"
+			}
 		}
 
 		slog.Info("HTTP request",
@@ -73,12 +77,29 @@ func LoggerAndMetrics(next http.Handler) http.Handler {
 	})
 }
 
+func writeJSONError(w http.ResponseWriter, msg string, code int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	_, _ = w.Write([]byte(`{"error":"` + msg + `"}`))
+}
+
+// SecurityHeaders sets hardening HTTP response headers including CSP.
+func SecurityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' https: blob:; connect-src 'self' ws: wss:;")
+		next.ServeHTTP(w, r)
+	})
+}
+
 // CORS handles Cross-Origin Resource Sharing.
 func CORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, X-Metrics-Token")
 
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
@@ -89,13 +110,13 @@ func CORS(next http.Handler) http.Handler {
 	})
 }
 
-// Recover recovers from panics gracefully and returns 500.
+// Recover recovers from panics gracefully and returns 500 JSON.
 func Recover(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if rec := recover(); rec != nil {
 				slog.Error("Panic recovered in HTTP handler", "panic", rec, "path", r.URL.Path)
-				http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
+				writeJSONError(w, "internal server error", http.StatusInternalServerError)
 			}
 		}()
 		next.ServeHTTP(w, r)
@@ -108,19 +129,19 @@ func Auth(secret string) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authHeader := r.Header.Get("Authorization")
 			if authHeader == "" {
-				http.Error(w, `{"error":"missing authorization header"}`, http.StatusUnauthorized)
+				writeJSONError(w, "missing authorization header", http.StatusUnauthorized)
 				return
 			}
 
 			parts := strings.Split(authHeader, " ")
 			if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
-				http.Error(w, `{"error":"invalid authorization format, expected Bearer <token>"}`, http.StatusUnauthorized)
+				writeJSONError(w, "invalid authorization format, expected Bearer <token>", http.StatusUnauthorized)
 				return
 			}
 
 			claims, err := auth.ValidateAccessToken(secret, parts[1])
 			if err != nil {
-				http.Error(w, `{"error":"invalid or expired token"}`, http.StatusUnauthorized)
+				writeJSONError(w, "invalid or expired token", http.StatusUnauthorized)
 				return
 			}
 

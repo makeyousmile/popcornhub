@@ -197,7 +197,7 @@ func (h *GroupHandler) GetPresence(w http.ResponseWriter, r *http.Request) {
 		memberIDs[i] = m.UserID.Hex()
 	}
 
-	presences, err := h.presenceService.GetGroupPresence(r.Context(), memberIDs)
+	presences, err := h.presenceService.GetGroupPresence(r.Context(), memberIDs, groupID.Hex())
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return

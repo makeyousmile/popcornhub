@@ -82,16 +82,11 @@ func (r *GroupRepo) FindByUserID(ctx context.Context, userID bson.ObjectID) ([]m
 }
 
 func (r *GroupRepo) AddMember(ctx context.Context, groupID bson.ObjectID, member models.GroupMember) error {
-	// First check if already member
-	isMem, err := r.IsMember(ctx, groupID, member.UserID)
-	if err != nil {
-		return err
+	// Atomic update: only push if user is not already in members array
+	filter := bson.M{
+		"_id":             groupID,
+		"members.user_id": bson.M{"$ne": member.UserID},
 	}
-	if isMem {
-		return ErrAlreadyMember
-	}
-
-	filter := bson.M{"_id": groupID}
 	update := bson.M{
 		"$push": bson.M{"members": member},
 	}
@@ -100,6 +95,11 @@ func (r *GroupRepo) AddMember(ctx context.Context, groupID bson.ObjectID, member
 		return err
 	}
 	if res.MatchedCount == 0 {
+		// Either group does not exist or user is already a member
+		isMem, checkErr := r.IsMember(ctx, groupID, member.UserID)
+		if checkErr == nil && isMem {
+			return ErrAlreadyMember
+		}
 		return ErrGroupNotFound
 	}
 	return nil

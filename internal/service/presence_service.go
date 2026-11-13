@@ -86,7 +86,7 @@ func (s *PresenceService) GetPresence(ctx context.Context, userID string) (*mode
 	return &p, nil
 }
 
-func (s *PresenceService) GetGroupPresence(ctx context.Context, memberUserIDs []string) ([]models.UserPresence, error) {
+func (s *PresenceService) GetGroupPresence(ctx context.Context, memberUserIDs []string, groupID string) ([]models.UserPresence, error) {
 	if len(memberUserIDs) == 0 {
 		return []models.UserPresence{}, nil
 	}
@@ -112,6 +112,13 @@ func (s *PresenceService) GetGroupPresence(ctx context.Context, memberUserIDs []
 		}
 		var p models.UserPresence
 		if err := json.Unmarshal([]byte(str), &p); err == nil {
+			if groupID != "" && p.GroupID != "" && p.GroupID != groupID {
+				// Do not leak media viewing activity from another group
+				p.Status = models.StatusIdle
+				p.MediaID = ""
+				p.MediaTitle = ""
+				p.RoomID = ""
+			}
 			presences = append(presences, p)
 		}
 	}

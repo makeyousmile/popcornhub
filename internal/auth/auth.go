@@ -14,9 +14,10 @@ var (
 )
 
 type AccessClaims struct {
-	UserID string `json:"user_id"`
-	Email  string `json:"email"`
-	Name   string `json:"name"`
+	UserID    string `json:"user_id"`
+	Email     string `json:"email"`
+	Name      string `json:"name"`
+	TokenType string `json:"token_type"`
 	jwt.RegisteredClaims
 }
 
@@ -49,9 +50,10 @@ func GenerateTokenPair(secret string, userID, email, name string, accessExp, ref
 	now := time.Now()
 
 	accessClaims := AccessClaims{
-		UserID: userID,
-		Email:  email,
-		Name:   name,
+		UserID:    userID,
+		Email:     email,
+		Name:      name,
+		TokenType: "access",
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   userID,
 			IssuedAt:  jwt.NewNumericDate(now),
@@ -105,6 +107,10 @@ func ValidateAccessToken(secret, tokenStr string) (*AccessClaims, error) {
 	claims, ok := token.Claims.(*AccessClaims)
 	if !ok || !token.Valid {
 		return nil, ErrInvalidToken
+	}
+
+	if claims.TokenType != "access" {
+		return nil, ErrWrongTokenType
 	}
 
 	return claims, nil

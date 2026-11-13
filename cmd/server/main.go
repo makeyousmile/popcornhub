@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -22,15 +23,31 @@ import (
 )
 
 func main() {
-	// Initialize structured logger
+	cfg := config.Load()
+
+	// Initialize structured logger with configured LogLevel
+	var logLevel slog.Level
+	switch strings.ToLower(cfg.LogLevel) {
+	case "debug":
+		logLevel = slog.LevelDebug
+	case "warn", "warning":
+		logLevel = slog.LevelWarn
+	case "error":
+		logLevel = slog.LevelError
+	default:
+		logLevel = slog.LevelInfo
+	}
+
 	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
+		Level: logLevel,
 	})
 	slog.SetDefault(slog.New(handler))
 
-	slog.Info("Starting PopcornHub collaborative streaming server...")
+	slog.Info("Starting PopcornHub collaborative streaming server...", "log_level", cfg.LogLevel)
 
-	cfg := config.Load()
+	if cfg.JWTSecret == "super-secret-popcorn-key-change-in-prod-2026" {
+		slog.Warn("USING DEFAULT INSECURE JWT SECRET! Change JWT_SECRET in production!")
+	}
 
 	// Context for initialization
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -70,7 +87,7 @@ func main() {
 	presenceService := service.NewPresenceService(redisClient.Client)
 
 	// Initialize WebSocket hubs
-	presenceHub := websocket.NewPresenceHub(presenceService, cfg)
+	presenceHub := websocket.NewPresenceHub(presenceService, groupRepo, cfg)
 	roomHub := websocket.NewRoomHub(roomRepo, groupRepo, mediaRepo, userRepo, presenceService, redisClient.Client, cfg)
 
 	// Initialize HTTP handlers
@@ -100,6 +117,8 @@ func main() {
 		PresenceHub:  presenceHub,
 		RoomHub:      roomHub,
 		StaticDir:    staticDir,
+		MongoDB:      mongoDB,
+		RedisClient:  redisClient,
 	})
 
 	server := &http.Server{
